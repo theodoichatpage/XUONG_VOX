@@ -51,3 +51,5 @@ input[type=number]{appearance:textfield;-moz-appearance:textfield}input[type=num
 .audio-bar{pointer-events:auto;right:auto}
 
 .audio-bar{overflow:visible}.audio-bar .clip-handle.end{right:0;z-index:2;cursor:ew-resize}
+
+.timeline .hold-key-button{height:18px!important;min-height:18px!important;width:18px;min-width:18px;padding:0;margin-left:auto;border:0;background:transparent;color:#d4f733;font-size:11px;line-height:18px;flex:none}.timeline .hold-key-button:hover{background:#3b4330}.timeline .track-label{min-width:0}
