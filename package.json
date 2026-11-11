@@ -1,0 +1,1 @@
+{"name":"xuong-vox","version":"0.1.0","type":"module","private":true,"scripts":{"dev":"vite --host 0.0.0.0","build":"vite build","test":"node --test test/*.test.js"},"dependencies":{"three":"^0.185.0","jszip":"^3.10.1","mp4-muxer":"^5.2.2"},"devDependencies":{"vite":"^7.0.0"}}
