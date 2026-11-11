@@ -45,3 +45,6 @@ export function duplicatePropertyKeys(entries,delta,duration){
 }
 
 export function isEasedKey(key){return ['easeIn','easeOut','easeInOut'].includes(key?.easing)}
+
+export function moveClipIntervals(layers,delta,duration){if(!layers.length||!Number.isFinite(delta))return 0;const bounds=layers.map(l=>clipBounds(l,duration));delta=clamp(delta,-Math.min(...bounds.map(b=>b.start)),duration-Math.max(...bounds.map(b=>b.end)));if(Math.abs(delta)<1e-9)return 0;layers.forEach((layer,i)=>{layer.clipStart=bounds[i].start+delta;layer.clipEnd=bounds[i].end+delta;for(const key of layer.keys||[])key.time+=delta});return delta}
+export function moveLayerPositions(entries,delta,time,ease='linear'){for(const {layer,position} of entries)editEntity(layer,time,value=>{value.position=position.map((v,i)=>v+delta[i])},ease)}
