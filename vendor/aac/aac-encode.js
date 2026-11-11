@@ -21,7 +21,7 @@ const CODEC = { lc: 'mp4a.40.2', he: 'mp4a.40.5', hev2: 'mp4a.40.29' }
 export default async function aac(opts) {
 	let profile = opts.profile || 'lc'
 	if (!CODEC[profile]) throw new Error(`aac: unknown profile '${profile}' (lc, he, hev2)`)
-	if (typeof AudioEncoder !== 'undefined') {
+	if (!opts.forceSoftware && typeof AudioEncoder !== 'undefined') {
 		let s = await AudioEncoder.isConfigSupported({ codec: CODEC[profile], sampleRate: opts.sampleRate, numberOfChannels: opts.channels || 1, bitrate: (opts.bitrate || 128) * 1000 })
 		if (s.supported) return webcodecs(opts, CODEC[profile])
 	}
