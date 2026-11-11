@@ -1,0 +1,3 @@
+import {test} from 'node:test';import assert from 'node:assert/strict';import {ProjectHistory} from '../history.js';
+test('undo redo restores layers, keyframes and visibility and discards redo after a new change',()=>{let h=new ProjectHistory({layers:[]});let p={layers:[{id:'a',visible:true,keys:[{time:1}]}]};h.record(p);p.layers[0].visible=false;h.record(p);assert.equal(h.undo().layers[0].visible,true);assert.equal(h.redo().layers[0].visible,false);h.undo();h.record({layers:[]});assert.equal(h.redo(),null)});
+test('one drag is one undo action',()=>{let h=new ProjectHistory({x:0});h.begin();h.record({x:1});h.record({x:2});h.record({x:3});h.end();assert.deepEqual(h.undo(),{x:0});assert.deepEqual(h.redo(),{x:3})});
