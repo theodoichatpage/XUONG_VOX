@@ -43,3 +43,5 @@ export function duplicatePropertyKeys(entries,delta,duration){
   for(const {entity,key} of entries){const time=key.time+delta;if(time<0||time>duration)return {copies:[],error:'out-of-range'};if(entity.keys.some(k=>k.property===key.property&&Math.abs(k.time-time)<.017))return {copies:[],error:'collision'};copies.push({entity,key:{...structuredClone(key),time}})}
   for(const entry of copies)entry.entity.keys.push(entry.key);return {copies:copies.map(entry=>entry.key),error:null};
 }
+
+export function isEasedKey(key){return ['easeIn','easeOut','easeInOut'].includes(key?.easing)}
