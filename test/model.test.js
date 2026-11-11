@@ -1,2 +1,4 @@
 import {test} from 'node:test';import assert from 'node:assert/strict';import {evaluate,easing} from '../model.js';
 test('interpolates animated layer and camera values',()=>{const keys=[{time:0,value:{position:[0,0,10],opacity:1},easing:'linear'},{time:10,value:{position:[4,2,0],opacity:0},easing:'linear'}];assert.deepEqual(evaluate({},keys,5),{position:[2,1,5],opacity:.5});assert.equal(easing(.5,'easeIn'),.25);assert.equal(easing(.5,'easeOut'),.75)});
+
+test('selection skips hidden and transparent image pixels',async()=>{const {firstVisibleHit}=await import('../model.js');const hits=[{object:{visible:false,material:{opacity:1}},opaque:true},{object:{visible:true,material:{opacity:1}},opaque:false},{object:{visible:true,material:{opacity:1}},opaque:true}];assert.equal(firstVisibleHit(hits,hit=>hit.opaque),hits[2]);assert.equal(firstVisibleHit([],()=>true),null)});

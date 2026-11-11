@@ -5,3 +5,6 @@ export function interpolate(a,b,t){if(typeof a==='number')return a+(b-a)*t;if(a&
 export function evaluate(base,keys,time){if(!keys.length)return structuredClone(base);const sorted=[...keys].sort((a,b)=>a.time-b.time);if(time<=sorted[0].time)return structuredClone(sorted[0].value);if(time>=sorted.at(-1).time)return structuredClone(sorted.at(-1).value);let i=sorted.findIndex(k=>k.time>time);let a=sorted[i-1],b=sorted[i];return interpolate(a.value,b.value,easing((time-a.time)/(b.time-a.time),b.easing))}
 export const initialCamera=()=>({position:[0,0,10],rotation:[0,0,0],target:[0,0,0],fov:45});
 export const newProject=()=>({version:1,duration:10,layers:[],camera:{value:initialCamera(),keys:[]}});
+
+// Raycaster intersections are nearest-first; transparent pixels and hidden layers do not block selection.
+export function firstVisibleHit(hits, isOpaque){return hits.find(hit=>hit.object.visible&&hit.object.material.opacity>0&&isOpaque(hit))||null}
