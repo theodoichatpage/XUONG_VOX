@@ -14,3 +14,5 @@ export function layerVisibleAt(layer,time,duration){const {start,end}=clipBounds
 
 // The third scale field is a uniform multiplier for the visible X/Y plane.
 export function setScaleComponent(scale,index,value){const next=[...scale];if(index===2){const previous=Number.isFinite(next[2])&&next[2]!==0?next[2]:1;const factor=value/previous;next[0]*=factor;next[1]*=factor;next[2]=value}else next[index]=value;return next}
+
+export function splitLayerAt(layer,time,duration,newId){const {start,end}=clipBounds(layer,duration);if(time<=start||time>=end)return null;const left=structuredClone(layer),right=structuredClone(layer);left.clipStart=start;left.clipEnd=time;right.id=newId;right.clipStart=time;right.clipEnd=end;return [left,right]}
