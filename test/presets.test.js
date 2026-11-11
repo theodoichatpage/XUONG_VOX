@@ -1,0 +1,2 @@
+import {test} from 'node:test';import assert from 'node:assert/strict';import {mergePresets,savePreset} from '../presets.js';
+test('merges older duplicates by project and name and keeps the last state',()=>{let old={id:'a',name:'Máy quay',projectName:'Dự án A',keys:[1]},other={id:'b',name:'Máy quay',projectName:'Dự án B',keys:[2]},latest={id:'c',name:' máy quay ',projectName:'Dự án A',keys:[3]};assert.deepEqual(mergePresets([old,other,latest]),[other,latest]);assert.deepEqual(savePreset([old,other],latest),[other,latest]);});
