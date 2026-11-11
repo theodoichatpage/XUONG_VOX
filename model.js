@@ -35,3 +35,11 @@ export function evaluateEntity(entity,time){normalizeEntity(entity);let value=st
 export function putPropertyKey(entity,prop,time,value,ease='linear'){normalizeEntity(entity);let key=entity.keys.find(k=>k.property===prop&&Math.abs(k.time-time)<.017);if(key){key.value=structuredClone(value);return key}key={property:prop,time,value:structuredClone(value),easing:ease};entity.keys.push(key);return key}
 export function editEntity(entity,time,update,ease='linear'){normalizeEntity(entity);const before=evaluateEntity(entity,time),after=structuredClone(before);update(after);const keys=[];for(const prop of Object.keys(after)){if(JSON.stringify(after[prop])===JSON.stringify(before[prop]))continue;if(entity.animated[prop])keys.push(putPropertyKey(entity,prop,time,after[prop],ease));else entity.value[prop]=structuredClone(after[prop])}return keys}
 export function toggleProperty(entity,prop,time,ease='linear'){normalizeEntity(entity);const value=evaluateEntity(entity,time)[prop];if(entity.animated[prop]){entity.value[prop]=structuredClone(value);entity.animated[prop]=false;return false}entity.animated[prop]=true;putPropertyKey(entity,prop,time,value,ease);return true}
+
+// Duplicate without altering originals or silently overwriting a key at the destination.
+export function duplicatePropertyKeys(entries,delta,duration){
+  if(!entries.length||Math.abs(delta)<1/60)return {copies:[],error:'no-movement'};
+  const copies=[];
+  for(const {entity,key} of entries){const time=key.time+delta;if(time<0||time>duration)return {copies:[],error:'out-of-range'};if(entity.keys.some(k=>k.property===key.property&&Math.abs(k.time-time)<.017))return {copies:[],error:'collision'};copies.push({entity,key:{...structuredClone(key),time}})}
+  for(const entry of copies)entry.entity.keys.push(entry.key);return {copies:copies.map(entry=>entry.key),error:null};
+}

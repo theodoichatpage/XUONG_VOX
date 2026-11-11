@@ -7,3 +7,5 @@ Nhập nhiều PNG/JPG, chọn layer rồi kéo trục trên màn hình; chuyể
 MP4 được mã hóa tại máy bằng WebCodecs H.264, 1920×1080, 30 fps và mux thành MP4. Tính năng phụ thuộc hỗ trợ thực tế của trình duyệt/thiết bị; ứng dụng kiểm tra codec và báo lỗi nếu không hỗ trợ. Chrome/Edge mới thường phù hợp hơn, không đảm bảo tất cả máy. Xuất video dài có thể dùng nhiều RAM. Cảnh demo tạo hình bằng canvas, không dùng AI.
 
 Chi tiết nghiên cứu kho và giấy phép trong [NGHIEN-CUU.md](NGHIEN-CUU.md).
+
+Kế hoạch cho giai đoạn sau: ứng dụng PC hỗ trợ Ctrl + cuộn chuột để thay đổi độ phóng đại timeline; nghiên cứu giao diện và thao tác riêng cho mobile. Hiện tại bản web dùng Shift + cuộn chuột trong timeline.
