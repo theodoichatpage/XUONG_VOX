@@ -17,3 +17,5 @@ button,input:not([type=file]):not([type=range]),select,textarea{height:32px;min-
 .clip-bar{cursor:pointer}.clip-bar.selected-clip{outline:2px solid #52a9ff;outline-offset:1px}.key.selected{color:#fff;background:#217bcc;border-radius:3px}
 #cameraFrame{will-change:transform}
 .layer-rename{min-width:0;flex:1;width:100%;height:32px;padding:0 5px;border:1px solid #d4f733;background:#17191b;color:#fff;font:14px Arial,sans-serif;outline:none}
+/* Selection is limited to the timeline; renaming still permits normal text selection. */
+.timeline{-webkit-user-select:none;user-select:none}.timeline input:not([type=range]),.timeline textarea,.timeline [contenteditable=true]{-webkit-user-select:text;user-select:text}.tracks{position:relative}.selection-box{position:absolute;z-index:6;pointer-events:none;border:1px solid #6cb5ff;background:#2687e633}
