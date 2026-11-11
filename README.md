@@ -9,3 +9,5 @@ MP4 được mã hóa tại máy bằng WebCodecs H.264, 1920×1080, 30 fps và 
 Chi tiết nghiên cứu kho và giấy phép trong [NGHIEN-CUU.md](NGHIEN-CUU.md).
 
 Kế hoạch cho giai đoạn sau: ứng dụng PC hỗ trợ Ctrl + cuộn chuột để thay đổi độ phóng đại timeline; nghiên cứu giao diện và thao tác riêng cho mobile. Hiện tại bản web dùng Shift + cuộn chuột trong timeline.
+
+Âm thanh: nút “＋ Âm thanh” nhập một tệp do trình duyệt hỗ trợ; timeline khớp thời lượng tệp. Dự án ZIP kèm tệp nguồn. Khi xuất MP4 có âm thanh, trình duyệt cần hỗ trợ WebCodecs H.264 và AAC; xuất và mã hóa diễn ra tại máy.
