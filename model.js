@@ -11,3 +11,6 @@ export function firstVisibleHit(hits, isOpaque){return hits.find(hit=>hit.object
 
 export function clipBounds(layer,duration){const start=clamp(Number.isFinite(layer.clipStart)?layer.clipStart:0,0,duration);const end=clamp(Number.isFinite(layer.clipEnd)?layer.clipEnd:duration,start,duration);return {start,end}}
 export function layerVisibleAt(layer,time,duration){const {start,end}=clipBounds(layer,duration);return layer.visible!==false&&time>=start&&(time<end||(end===duration&&time===duration&&start<end))}
+
+// The third scale field is a uniform multiplier for the visible X/Y plane.
+export function setScaleComponent(scale,index,value){const next=[...scale];if(index===2){const previous=Number.isFinite(next[2])&&next[2]!==0?next[2]:1;const factor=value/previous;next[0]*=factor;next[1]*=factor;next[2]=value}else next[index]=value;return next}
