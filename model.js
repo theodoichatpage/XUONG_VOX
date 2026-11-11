@@ -8,3 +8,6 @@ export const newProject=()=>({version:1,duration:10,layers:[],camera:{value:init
 
 // Raycaster intersections are nearest-first; transparent pixels and hidden layers do not block selection.
 export function firstVisibleHit(hits, isOpaque){return hits.find(hit=>hit.object.visible&&hit.object.material.opacity>0&&isOpaque(hit))||null}
+
+export function clipBounds(layer,duration){const start=clamp(Number.isFinite(layer.clipStart)?layer.clipStart:0,0,duration);const end=clamp(Number.isFinite(layer.clipEnd)?layer.clipEnd:duration,start,duration);return {start,end}}
+export function layerVisibleAt(layer,time,duration){const {start,end}=clipBounds(layer,duration);return layer.visible!==false&&time>=start&&(time<end||(end===duration&&time===duration&&start<end))}
