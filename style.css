@@ -20,3 +20,4 @@ button,input:not([type=file]):not([type=range]),select,textarea{height:32px;min-
 /* Selection is limited to the timeline; renaming still permits normal text selection. */
 .timeline{-webkit-user-select:none;user-select:none}.timeline input:not([type=range]),.timeline textarea,.timeline [contenteditable=true]{-webkit-user-select:text;user-select:text}.tracks{position:relative}.selection-box{position:absolute;z-index:6;pointer-events:none;border:1px solid #6cb5ff;background:#2687e633}
 .position-actions{display:flex;gap:6px;justify-content:flex-end;margin:-5px 0 8px}.position-actions button{font-size:14px;padding:0 8px}
+.preset-toolbar{display:flex;align-items:center;gap:6px;flex:none;white-space:nowrap}.preset-toolbar #savedPresets{width:155px;max-width:none;flex:none;margin:0}.copy-all-actions{display:flex;align-items:center;gap:6px;flex-wrap:nowrap}.copy-all-actions button{flex:1;min-width:0;padding:0 5px;white-space:nowrap}.position-actions{display:none}
