@@ -49,3 +49,5 @@ input[type=number]{appearance:textfield;-moz-appearance:textfield}input[type=num
 
 .audio-bar{cursor:pointer}.audio-bar.audio-selected{outline:2px solid #2997ff;outline-offset:-2px}
 .audio-bar{pointer-events:auto;right:auto}
+
+.audio-bar{overflow:visible}.audio-bar .clip-handle.end{right:0;z-index:2;cursor:ew-resize}
