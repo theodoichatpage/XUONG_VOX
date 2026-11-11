@@ -16,3 +16,22 @@ export function layerVisibleAt(layer,time,duration){const {start,end}=clipBounds
 export function setScaleComponent(scale,index,value){const next=[...scale];if(index===2){const previous=Number.isFinite(next[2])&&next[2]!==0?next[2]:1;const factor=value/previous;next[0]*=factor;next[1]*=factor;next[2]=value}else next[index]=value;return next}
 
 export function splitLayerAt(layer,time,duration,newId){const {start,end}=clipBounds(layer,duration);if(time<=start||time>=end)return null;const left=structuredClone(layer),right=structuredClone(layer);left.clipStart=start;left.clipEnd=time;right.id=newId;right.clipStart=time;right.clipEnd=end;return [left,right]}
+
+// Upgrade legacy whole-object keyframes to separate property tracks.
+export function normalizeEntity(entity){
+  entity.keys=Array.isArray(entity.keys)?entity.keys:[];entity.animated=entity.animated||{};
+  const legacy=entity.keys.filter(k=>!k.property&&k.value&&typeof k.value==='object'&&!Array.isArray(k.value));
+  if(!legacy.length)return entity;
+  const converted=entity.keys.filter(k=>!legacy.includes(k));
+  for(const prop of Object.keys(entity.value)){
+    const present=legacy.filter(k=>Object.prototype.hasOwnProperty.call(k.value,prop));if(!present.length)continue;
+    const values=present.map(k=>k.value[prop]),varying=values.some(v=>JSON.stringify(v)!==JSON.stringify(values[0]));
+    if(varying){entity.animated[prop]=true;for(const k of present)converted.push({time:k.time,property:prop,value:structuredClone(k.value[prop]),easing:k.easing||'linear'})}
+    else if(!converted.some(k=>k.property===prop)){entity.value[prop]=structuredClone(values[0]);if(entity.animated[prop]===undefined)entity.animated[prop]=false}
+  }
+  entity.keys=converted;return entity;
+}
+export function evaluateEntity(entity,time){normalizeEntity(entity);let value=structuredClone(entity.value);for(const prop of Object.keys(value)){if(entity.animated[prop]){let keys=entity.keys.filter(k=>k.property===prop);if(keys.length)value[prop]=evaluate(value[prop],keys,time)}}return value}
+export function putPropertyKey(entity,prop,time,value,ease='linear'){normalizeEntity(entity);let key=entity.keys.find(k=>k.property===prop&&Math.abs(k.time-time)<.017);if(key){key.value=structuredClone(value);return key}key={property:prop,time,value:structuredClone(value),easing:ease};entity.keys.push(key);return key}
+export function editEntity(entity,time,update,ease='linear'){normalizeEntity(entity);const before=evaluateEntity(entity,time),after=structuredClone(before);update(after);const keys=[];for(const prop of Object.keys(after)){if(JSON.stringify(after[prop])===JSON.stringify(before[prop]))continue;if(entity.animated[prop])keys.push(putPropertyKey(entity,prop,time,after[prop],ease));else entity.value[prop]=structuredClone(after[prop])}return keys}
+export function toggleProperty(entity,prop,time,ease='linear'){normalizeEntity(entity);const value=evaluateEntity(entity,time)[prop];if(entity.animated[prop]){entity.value[prop]=structuredClone(value);entity.animated[prop]=false;return false}entity.animated[prop]=true;putPropertyKey(entity,prop,time,value,ease);return true}
