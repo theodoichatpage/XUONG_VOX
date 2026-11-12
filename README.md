@@ -12,7 +12,7 @@ Danh sách **Cảnh** trên timeline dùng để thêm, nhân đôi, đổi tên
 
 Phím **T** mở tab Text; thêm layer chữ, chỉnh kiểu và chọn hiệu ứng. Chọn một đoạn trong ô nội dung để đánh dấu bằng nét tô, gạch chân, khoanh hoặc gạch chéo. Nút **Nhập font UTM Bebas** nhận file font người dùng cung cấp và lưu cùng dự án.
 
-Nút **Lưu mẫu** trên thanh đầu lưu keyframe camera; danh sách có hình xem trước quỹ đạo. Trong tab Text, **Lưu mẫu chữ** lưu kiểu chữ, đánh dấu và keyframe; ảnh xem trước giúp chọn lại mẫu. Mẫu được lưu tại trình duyệt.
+Trong tab Text, **Lưu mẫu chữ** lưu kiểu chữ, đánh dấu và keyframe; ảnh xem trước giúp chọn lại mẫu. Mẫu được lưu tại trình duyệt.
 
 ## Xuất video
 
