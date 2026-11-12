@@ -5,3 +5,5 @@ test('drawing is deterministic and separates background highlight from foregroun
 
 test('reference annotations draw the expected number of passes',()=>{let strokes=0;let ctx={save(){},restore(){},beginPath(){},moveTo(){},lineTo(){},stroke(){strokes++}},r={left:0,top:0,width:100,height:30};drawAnnotation(ctx,'circle',r,1,'#fff');assert.equal(strokes,2);strokes=0;drawAnnotation(ctx,'underline',r,1,'#fff');assert.equal(strokes,3);strokes=0;drawAnnotation(ctx,'cross',r,1,'#fff');assert.equal(strokes,20)});
 test('circle timing follows an ease-in-out curve',async()=>{const {easeCircle}=await import('../text-annotations.js');assert.ok(easeCircle(.25)<.25);assert.ok(Math.abs(easeCircle(.5)-.5)<.00001);assert.ok(easeCircle(.75)>.75)});
+
+test('highlight spring reaches its final state smoothly',async()=>{const {easeHighlight}=await import('../text-annotations.js');assert.ok(Math.abs(easeHighlight(0))<1e-9);assert.ok(easeHighlight(.5)>.5);assert.equal(easeHighlight(1),1)});

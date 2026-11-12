@@ -1,17 +1,22 @@
-// Timeline-driven annotation paths drawn in the same canvas as each text layer.
+import rough from 'roughjs';
 const clamp01=n=>Math.max(0,Math.min(1,n));
 export function annotationProgress(settings,time,start){if(!settings?.annotation||settings.annotation==='none')return 0;const delay=Math.max(0,Number(settings.annotationDelay)||0),duration=Math.max(.05,Number(settings.annotationDuration)||.8);return clamp01((time-start-delay)/duration)}
 export function selectedTextRange(content,start,end){const n=content.length;if(!Number.isInteger(start)||!Number.isInteger(end)||start<0||end<=start||start>=n)return [0,n];return [start,Math.min(end,n)]}
-function path(ctx,points,progress){if(progress<=0||points.length<2)return;let lengths=[],total=0;for(let i=1;i<points.length;i++){const len=Math.hypot(points[i][0]-points[i-1][0],points[i][1]-points[i-1][1]);lengths.push(len);total+=len}let remain=total*clamp01(progress);ctx.beginPath();ctx.moveTo(...points[0]);for(let i=1;i<points.length&&remain>0;i++){const len=lengths[i-1],p=Math.min(1,remain/(len||1));ctx.lineTo(points[i-1][0]+(points[i][0]-points[i-1][0])*p,points[i-1][1]+(points[i][1]-points[i-1][1])*p);remain-=len}ctx.stroke()}
-function line(x1,y1,x2,y2){let p=[];for(let i=0;i<=12;i++){let t=i/12,wave=Math.sin(i*2.17)*1.15;p.push([x1+(x2-x1)*t,y1+(y2-y1)*t+wave])}return p}
-// Cubic-bezier(0.42, 0, 0.58, 1), matching the reference circle timing.
 export function easeCircle(p){p=clamp01(p);let lo=0,hi=1;for(let i=0;i<20;i++){let t=(lo+hi)/2,x=3*(1-t)*(1-t)*t*.42+3*(1-t)*t*t*.58+t*t*t;if(x<p)lo=t;else hi=t}let t=(lo+hi)/2;return 3*(1-t)*t*t+t*t*t}
-function ellipsePoints(cx,cy,rx,ry,pass){const points=[];for(let i=0;i<=96;i++){let a=-Math.PI/2+2*Math.PI*i/96,rough=1+.008*Math.sin(3*a+pass*1.6)+.004*Math.sin(5*a+pass),shift=pass===0?-.7:.7;points.push([cx+Math.cos(a)*rx*rough+shift,cy+Math.sin(a)*ry*rough-shift])}return points}
-export function drawAnnotation(ctx,type,rect,progress,color,thickness=6,background=false,opacity=1){if(progress<=0||(type==='highlight')!==background)return;const {left,top,width,height}=rect;if(width<=0||height<=0)return;ctx.save();ctx.globalAlpha=Number.isFinite(Number(opacity))?Math.max(0,Math.min(1,Number(opacity))):1;ctx.strokeStyle=color;ctx.lineWidth=Math.max(1,Math.min(30,Number(thickness)||6));ctx.lineCap='round';ctx.lineJoin='round';let l=left-6,r=left+width+6,t=top-3,b=top+height+3,mid=(t+b)/2;
- if(type==='highlight'){ctx.globalAlpha*=.62;ctx.lineWidth=height;path(ctx,line(left-20,mid,left+width+20,mid),progress)}
- else if(type==='underline'){for(let i=0;i<3;i++){let amount=clamp01(progress*3-i),offset=(i-1)*1.3;path(ctx,i%2?line(r,b+offset,l,b+offset):line(l,b+offset,r,b+offset),amount)}}
- else if(type==='strike')path(ctx,line(l,mid,r,mid),progress);
- else if(type==='cross'){for(let i=0;i<20;i++){let amount=clamp01(progress*20-i),jitter=Math.sin(i*2.7)*2.2,forward=i%2===0,second=i>=10,from=second?[l,b+jitter]:[l,t+jitter],to=second?[r,t-jitter]:[r,b-jitter];if(!forward)[from,to]=[to,from];path(ctx,line(...from,...to),amount)}}
- else if(type==='box')path(ctx,[[l,t],[r,t+2],[r+1,b],[l,b+1],[l,t]],progress);
- else if(type==='bracket')path(ctx,[[l+12,t],[l,t],[l,b],[l+12,b],[l,b],[r,b],[r,b-12],[r,t],[r-12,t]],progress);
- else if(type==='circle'){let eased=easeCircle(progress),cx=left+width/2,cy=top+height/2,rx=width/2+10,ry=height/2+10;for(let i=0;i<2;i++)path(ctx,ellipsePoints(cx,cy,rx,ry,i),clamp01(eased*2-i))}ctx.restore()}
+// Normalized critically damped-style spring using the reference's overdamped values.
+export function easeHighlight(p){p=clamp01(p);const r1=(-200+Math.sqrt(200*200-400))/2,r2=(-200-Math.sqrt(200*200-400))/2;const value=t=>1-(r2*Math.exp(r1*t)-r1*Math.exp(r2*t))/(r2-r1);return clamp01(value(p*7.82)/value(7.82))}
+const generator=rough.generator();
+// Convert Rough.js cubic curves to points so that the same deterministic geometry
+// can be revealed partially on the canvas at any timeline time, including export.
+export function roughPoints(ops){let paths=[],points=[],current=null;for(const op of ops){let d=op.data;if(op.op==='move'){if(points.length>1)paths.push(points);points=[[d[0],d[1]]];current=[d[0],d[1]]}else if(op.op==='lineTo'&&current){current=[d[0],d[1]];points.push(current)}else if(op.op==='bcurveTo'&&current){const [x0,y0]=current;for(let i=1;i<=24;i++){let t=i/24,u=1-t;points.push([u*u*u*x0+3*u*u*t*d[0]+3*u*t*t*d[2]+t*t*t*d[4],u*u*u*y0+3*u*u*t*d[1]+3*u*t*t*d[3]+t*t*t*d[5]])}current=[d[4],d[5]]}}if(points.length>1)paths.push(points);return paths}
+function drawPath(ctx,points,progress){if(progress<=0||points.length<2)return;let lengths=[],total=0;for(let i=1;i<points.length;i++){let n=Math.hypot(points[i][0]-points[i-1][0],points[i][1]-points[i-1][1]);lengths.push(n);total+=n}let remain=total*clamp01(progress);ctx.beginPath();ctx.moveTo(...points[0]);for(let i=1;i<points.length&&remain>0;i++){let n=lengths[i-1],p=Math.min(1,remain/(n||1));ctx.lineTo(points[i-1][0]+(points[i][0]-points[i-1][0])*p,points[i-1][1]+(points[i][1]-points[i-1][1])*p);remain-=n}ctx.stroke()}
+function roughOptions(type,seed){return {seed,maxRandomnessOffset:type==='highlight'?10:5,roughness:type==='highlight'?2.3:type==='circle'?1.8:type==='cross'?2:1.5,bowing:type==='highlight'?0:1,stroke:'#000',strokeWidth:1.5,curveTightness:0,curveFitting:.95,curveStepCount:9,disableMultiStroke:true}}
+export function annotationPaths(type,rect){const {left,top,width,height}=rect,l=left,r=left+width,t=top,b=top+height,mid=top+height/2,paths=[];function add(shape){for(const set of shape.sets)if(set.type==='path')paths.push(...roughPoints(set.ops))}function addLine(x1,y1,x2,y2,i){add(generator.line(x1,y1,x2,y2,roughOptions(type,42+i)))}
+ if(type==='highlight')addLine(l-20,mid,r+20,mid,0);
+ else if(type==='circle'){for(let i=0;i<2;i++)add(generator.ellipse((l+r)/2,mid,width+20,height+20,roughOptions(type,42+i)))}
+ else if(type==='underline'){for(let i=0;i<3;i++)i%2?addLine(r,b,l,b,i):addLine(l,b,r,b,i)}
+ else if(type==='cross'){for(let i=0;i<10;i++)i%2?addLine(r,b,l,t,i):addLine(l,t,r,b,i);for(let i=0;i<10;i++)i%2?addLine(r,t,l,b,i+10):addLine(l,b,r,t,i+10)}
+ else if(type==='strike')addLine(l,mid,r,mid,0);
+ else if(type==='box')add(generator.rectangle(l,t,width,height,roughOptions(type,42)));
+ else if(type==='bracket'){addLine(l,t,l,b,0);addLine(r,t,r,b,1)}return paths}
+export function drawAnnotation(ctx,type,rect,progress,color,thickness=6,background=false,opacity=1){if(progress<=0||(type==='highlight')!==background||rect.width<=0||rect.height<=0)return;let paths=annotationPaths(type,rect),p=type==='circle'?easeCircle(progress):type==='highlight'?easeHighlight(progress):clamp01(progress);ctx.save();ctx.globalAlpha=Number.isFinite(Number(opacity))?Math.max(0,Math.min(1,Number(opacity))):1;if(type==='highlight')ctx.globalAlpha*=.62;ctx.strokeStyle=color;ctx.lineWidth=type==='highlight'?rect.height:Math.max(1,Math.min(30,Number(thickness)||6));ctx.lineCap='butt';ctx.lineJoin='round';paths.forEach((points,i)=>drawPath(ctx,points,clamp01(p*paths.length-i)));ctx.restore()}
