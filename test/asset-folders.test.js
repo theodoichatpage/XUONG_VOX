@@ -1,0 +1,7 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {partitionFolderFiles,matchFolderImages,applyFolderReplacements} from '../asset-folders.js';
+const file=(path)=>({name:path.split('/').at(-1),webkitRelativePath:path});
+test('discovers Studio scene folders and ignores inspection files and metadata',()=>{let dirs=partitionFolderFiles([file('Phan/Canh 2/01_bg.png'),file('Phan/Canh 2/_kiem_tra/01_bg.png'),file('Phan/Canh 2/vi_tri.json'),file('Phan/Canh 1/01_bg.png')]);assert.deepEqual(dirs.map(d=>d.name),['Canh 1','Canh 2']);assert.equal(dirs[1].files.length,1)});
+test('replacement rejects ambiguous duplicate names and missing images without changes',()=>{let layers=[{id:'1',name:'01_bg.png',src:'old'},{id:'2',name:'02_mid.png',src:'old2'}];assert.throws(()=>matchFolderImages(layers,[file('a/01_bg.png')]),/02_mid/);assert.throws(()=>matchFolderImages(layers,[file('a/01_bg.png'),file('a/01_bg.jpg'),file('a/02_mid.png')]),/trùng/i);assert.equal(layers[0].src,'old')});
+test('replaces images by name preserving keyframes and other layer state',()=>{let layers=[{id:'1',name:'01_bg.png',src:'old',keys:[{time:1}],value:{x:3},folderId:'x',folderName:'Old'}];let mapping=matchFolderImages(layers,[file('New/01_bg.png')]);applyFolderReplacements(mapping,[{src:'new'}],'New');assert.equal(layers[0].src,'new');assert.deepEqual(layers[0].keys,[{time:1}]);assert.equal(layers[0].folderName,'New')});
