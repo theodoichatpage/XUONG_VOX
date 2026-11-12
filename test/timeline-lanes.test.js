@@ -52,3 +52,20 @@ test('magnet snaps an exact edge and disabled magnet permits a one-frame gap',()
   assert.equal(fitClipOffset(placement,near),near);
   assert.equal(fitClipOffset(placement,2+1/30),2);
 });
+
+test('separates legacy overlapping clips without shifting time or changing stack order',async()=>{
+  const {separateOverlappingLanes}=await import('../timeline-lanes.js');
+  const a={id:'a',clipStart:0,clipEnd:4};
+  const b={id:'b',laneId:'a',clipStart:2,clipEnd:5,keys:[{time:3}]};
+  const c={id:'c',laneId:'a',clipStart:4,clipEnd:6};
+  const project={duration:10,layers:[a,b,c],groups:[{layerIds:['a','b','c']}]};
+  separateOverlappingLanes(project);
+  assert.deepEqual(project.layers,[a,b,c]);
+  assert.notEqual(b.laneId,'a');
+  assert.equal(c.laneId,'a');
+  assert.deepEqual([b.clipStart,b.clipEnd,b.keys[0].time],[2,5,3]);
+  assert.deepEqual(project.groups[0].layerIds,['a','b','c']);
+  const repairedLane=b.laneId;
+  separateOverlappingLanes(project);
+  assert.equal(b.laneId,repairedLane);
+});

@@ -101,3 +101,44 @@ h3,.pane-title{font-size:12px}.camera-title select#previewZoom{width:72px;max-wi
 .clip-bar.clip-copy-ghost{opacity:.6;pointer-events:none;z-index:5;outline:1px dashed #fff}
 #timelineMagnet[aria-pressed="true"]{border-color:#d4f733;background:#343c23}
 #timelineMagnet[aria-pressed="false"]{opacity:.65}
+
+/* Docked editor workspace */
+.layout{
+  grid-template-columns:minmax(0,var(--workspace-media,230px)) 8px minmax(0,1fr) 8px minmax(0,var(--workspace-inspector,306px));
+  height:calc(100dvh - 60px - var(--timeline-height));
+  min-height:0;
+  padding:6px 8px 4px;
+  background:#111214;
+}
+.layout>aside,#viewport{
+  min-width:0;min-height:0;
+  border:1px solid #303237;
+  border-radius:7px;
+  background:#191a1d;
+}
+.workspace-panel-title{display:flex;align-items:center;justify-content:space-between;gap:6px;font-weight:600;margin-bottom:10px}
+#viewport{
+  display:grid;
+  grid-template-rows:minmax(0,var(--workspace-preview,60%)) 8px minmax(0,1fr);
+  gap:0;
+}
+#viewport>.view-pane{min-height:0;overflow:hidden}
+#viewport .pane-title{flex:none;min-height:30px;height:30px}
+.workspace-divider{position:relative;touch-action:none;cursor:ew-resize;outline-offset:-2px}
+.workspace-divider::after{content:'';position:absolute;inset:20% 3px;border-radius:3px;background:#54575d}
+#previewResize{cursor:ns-resize}
+#previewResize::after{inset:3px 40%}
+.workspace-divider:hover::after,.workspace-divider:focus-visible::after,#timelineResize:focus-visible::after{background:#d4f733}
+.timeline{margin:0 8px;border:1px solid #303237;border-radius:7px;background:#18191c;min-width:0}
+.timelinebar{display:flex;justify-content:space-between;align-items:center;gap:6px 12px;padding:0 0 6px}
+.timeline-tools,.timeline-options{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.timelinebar button{padding-inline:8px;min-height:28px}
+.timelinebar #timelineZoom{display:inline-block;width:70px;min-width:45px;vertical-align:middle}
+.timeline-zoom{white-space:nowrap;font-size:12px}
+.timeline .track-name{width:164px;flex-basis:164px}
+.timeline .time-ruler{grid-template-columns:164px minmax(0,1fr)}
+.timeline .object-track-label{position:static;width:auto;height:auto;clip-path:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.timeline .track:not(.property-track):not(.group-track){height:27px}
+.timeline .track:not(.property-track):not(.group-track)>.track-name,.timeline .track:not(.property-track):not(.group-track)>.rail{height:27px}
+.clip-caption{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:2px 11px;color:#fff;font-size:11px;pointer-events:none;text-shadow:0 1px 2px #151515}
+#effectsPanel h3{margin:12px 0 6px}

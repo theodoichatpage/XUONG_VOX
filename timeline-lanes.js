@@ -85,3 +85,27 @@ export function duplicateTimelineClips(project,ids,delta,makeId){
   });
   return copies;
 }
+
+// Preserve timing and stacking when opening projects saved with overlapping clips on one row.
+export function separateOverlappingLanes(project){
+  const lanes=new Map();
+  for(const layer of project.layers){
+    const lane=layer.laneId||layer.id;
+    if(!lanes.has(lane))lanes.set(lane,[]);
+    lanes.get(lane).push(layer);
+  }
+  for(const [lane,layers] of lanes){
+    if(layers.length<2)continue;
+    const rows=[{id:lane,end:-Infinity}];
+    const sorted=layers.map(layer=>({layer,...clipBounds(layer,project.duration)})).sort((a,b)=>a.start-b.start);
+    for(const entry of sorted){
+      let row=rows.find(candidate=>entry.start>=candidate.end-EDGE_EPSILON);
+      if(!row){
+        row={id:'overflow:'+entry.layer.id,end:-Infinity};
+        rows.push(row);
+      }
+      row.end=entry.end;
+      if(row.id!==lane)entry.layer.laneId=row.id;
+    }
+  }
+}
