@@ -70,3 +70,6 @@ body.switching-scene header,body.switching-scene .layout,body.switching-scene .t
 
 .scene-menu{position:relative;z-index:20;flex:none}.scene-menu summary{height:32px;min-width:75px;display:flex;align-items:center;justify-content:center;cursor:pointer;border:1px solid #303237;border-radius:5px;background:#181a1d;list-style:none}.scene-menu summary::-webkit-details-marker{display:none}.scene-menu>div{position:absolute;top:34px;left:0;width:165px;padding:5px;background:#181a1d;border:1px solid #45484e;border-radius:5px;box-shadow:0 8px 16px #0009}.scene-menu button{display:block;width:100%;text-align:left;border:0}
 .scene-menu>div{max-height:calc(var(--timeline-height) - 65px);overflow-y:auto}
+
+/* Compact panel headings and vertical scrollbars. */
+h3,.pane-title{font-size:12px}.camera-title select#previewZoom{width:72px;max-width:72px}.layout aside{scrollbar-width:thin;scrollbar-color:#62666a #111214}.layout aside::-webkit-scrollbar{width:6px}.layout aside::-webkit-scrollbar-thumb{background:#62666a;border-radius:4px}.layout aside::-webkit-scrollbar-track{background:#111214}#renameProject{width:32px;min-width:32px;padding:0}
