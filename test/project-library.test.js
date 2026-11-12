@@ -1,0 +1,2 @@
+import {test} from 'node:test';import assert from 'node:assert/strict';import {assignProjectId,updateProjectIndex} from '../project-library.js';
+test('project index keeps projects distinct when updating names',()=>{let a=assignProjectId({name:'A'},'1'),b=assignProjectId({name:'B'},'2');let index=updateProjectIndex(updateProjectIndex([],a),b);assert.equal(index.length,2);index=updateProjectIndex(index,{...a,name:'Đổi tên'});assert.deepEqual(index.map(x=>[x.id,x.name]),[['1','Đổi tên'],['2','B']]);assert.equal(a.name,'A')});
