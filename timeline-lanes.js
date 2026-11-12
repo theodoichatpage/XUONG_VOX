@@ -13,6 +13,13 @@ export function laneNeighbors(project,item,excluded=new Set()){
     .map(other=>clipBounds(other,project.duration));
 }
 
+export function detachClipFromLane(project,item,newLaneId){
+  if(item.locked||!laneNeighbors(project,item).length)return false;
+  // The previous row may be keyed by this clip's ID. Keep that ID for its siblings.
+  item.laneId=newLaneId;
+  return true;
+}
+
 export function clipPlacement(project,items,duplicate){
   const moving=new Set(items);
   const entries=items.map(item=>({item,...clipBounds(item,project.duration)}));

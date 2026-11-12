@@ -82,3 +82,16 @@ test('a direct row drop uses its requested time and only snaps nearby edges',asy
   target.locked=true;
   assert.equal(fitClipOnLane(project,source,target,0,0.06),null);
 });
+
+test('detaches the original clip from a shared row without moving its siblings',async()=>{
+  const {detachClipFromLane}=await import('../timeline-lanes.js');
+  const original={id:'a',clipEnd:2,keys:[{time:1}]};
+  const sibling={id:'b',laneId:'a',clipStart:2,clipEnd:4};
+  const project={duration:10,layers:[original,sibling],groups:[{layerIds:['a','b']}]};
+  assert.equal(detachClipFromLane(project,original,'new-row'),true);
+  assert.equal(original.laneId,'new-row');
+  assert.equal(sibling.laneId,'a');
+  assert.deepEqual(original.keys,[{time:1}]);
+  assert.deepEqual(project.groups[0].layerIds,['a','b']);
+  assert.equal(detachClipFromLane(project,original,'another-row'),false);
+});
