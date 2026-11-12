@@ -185,3 +185,24 @@ header .project-picker #projectList{min-width:108px;max-width:170px}
   background:#24262a;border:1px solid #e0e3e8;border-radius:1px;
 }
 .ruler-control #time:focus-visible{outline:1px solid #777b84;outline-offset:-2px}
+
+#app{
+  font-size:12px;
+}
+#app :is(header, .layout, .timeline) :is(
+  button, input, select, summary, textarea, label, h3, strong, .pane-title,
+  .asset-caption, .clip-caption, .ticks span, .camera-template-preview, #folderTitle
+){
+  font-size:12px;
+}
+#app :is(header, .layout, .timeline) :is(
+  button:not(.asset-card, .text-template-card, .eye, .key, .track-lock, .hold-key-button, .effect-toggle, .group-toggle, .ungroup),
+  select, summary, input:not([type=file], [type=range], [type=checkbox], [type=radio])
+){
+  box-sizing:border-box;
+  height:23px;
+  min-height:23px;
+  line-height:normal;
+  padding-block:0;
+}
+.asset-caption,.clip-caption{line-height:14px}
