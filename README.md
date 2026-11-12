@@ -1,13 +1,21 @@
 # Xưởng Vox — Manual 2.5D Camera Editor
 
-Ứng dụng web độc lập, xử lý tại trình duyệt, không cần tài khoản, backend hoặc AI. Cài Node.js rồi chạy `npm install`, `npm run dev`; bản triển khai tĩnh tạo bằng `npm run build` (thư mục `dist`).
+Ứng dụng dựng video 2.5D chạy trong trình duyệt. Chạy `npm install` rồi `npm run dev`; bản triển khai tạo bằng `npm run build`.
 
-Nhập nhiều PNG/JPG, chọn layer rồi kéo trục trên màn hình; chuyển Custom 3D View để quan sát bố trí không gian. Sửa thông số trong bảng bên phải. Đưa con trỏ thời gian tới vị trí cần thiết, đổi thuộc tính rồi thêm keyframe; chọn hình thoi để sửa thời điểm, easing hoặc xóa. Preset tạo keyframe camera tại đầu và cuối cảnh. Bấm Phát để xem. Dự án tự lưu IndexedDB theo trình duyệt và tên miền; xuất ZIP thường xuyên để sao lưu. ZIP bao gồm project.json và ảnh gốc.
+## Dự án và cảnh
 
-MP4 được mã hóa tại máy bằng WebCodecs H.264, 1920×1080, 30 fps và mux thành MP4. Tính năng phụ thuộc hỗ trợ thực tế của trình duyệt/thiết bị; ứng dụng kiểm tra codec và báo lỗi nếu không hỗ trợ. Chrome/Edge mới thường phù hợp hơn, không đảm bảo tất cả máy. Xuất video dài có thể dùng nhiều RAM. Cảnh demo tạo hình bằng canvas, không dùng AI.
+Danh sách trên thanh trên cùng dùng để chuyển giữa các dự án đã lưu trên trình duyệt. Nút **Dự án mới** tạo dự án riêng sau khi lưu dự án hiện tại. Các dự án cũ được chuyển sang danh sách khi mở lần đầu. Dữ liệu vẫn thuộc trình duyệt và tên miền hiện tại; **Xuất dự án ZIP** tạo bản sao gồm mọi cảnh, ảnh, âm thanh và font được nhập để sao lưu hoặc chuyển máy.
 
-Chi tiết nghiên cứu kho và giấy phép trong [NGHIEN-CUU.md](NGHIEN-CUU.md).
+Danh sách **Cảnh** trên timeline dùng để thêm, nhân đôi, đổi tên, đổi thứ tự và xóa cảnh; mỗi cảnh có layer, camera, thời lượng và âm thanh riêng. **Phát tất cả cảnh** xem lần lượt; xuất MP4 ghép các cảnh theo thứ tự. Dữ liệu và âm thanh của từng cảnh được lưu riêng.
 
-Kế hoạch cho giai đoạn sau: ứng dụng PC hỗ trợ Ctrl + cuộn chuột để thay đổi độ phóng đại timeline; nghiên cứu giao diện và thao tác riêng cho mobile. Hiện tại bản web dùng Shift + cuộn chuột trong timeline.
+## Chữ và mẫu
 
-Âm thanh: nút “＋ Nhập file” nhập một tệp do trình duyệt hỗ trợ; timeline khớp thời lượng tệp. Dự án ZIP kèm tệp nguồn. Khi xuất MP4 có âm thanh, trình duyệt cần hỗ trợ WebCodecs H.264 và AAC; xuất và mã hóa diễn ra tại máy.
+Phím **T** mở tab Text; thêm layer chữ, chỉnh kiểu và chọn hiệu ứng. Chọn một đoạn trong ô nội dung để đánh dấu bằng nét tô, gạch chân, khoanh hoặc gạch chéo. Nút **Nhập font UTM Bebas** nhận file font người dùng cung cấp và lưu cùng dự án.
+
+Nút **Lưu mẫu** trên thanh đầu lưu keyframe camera; danh sách có hình xem trước quỹ đạo. Trong tab Text, **Lưu mẫu chữ** lưu kiểu chữ, đánh dấu và keyframe; ảnh xem trước giúp chọn lại mẫu. Mẫu được lưu tại trình duyệt.
+
+## Xuất video
+
+MP4 H.264/AAC được mã hóa tại máy bằng WebCodecs và bộ mã hóa AAC dự phòng. Tỉ lệ theo khung camera đang chọn. Tiến độ hiển thị trên nút xuất; khi hoàn thành hoặc gặp lỗi ứng dụng phục hồi cảnh đang chỉnh. Hỗ trợ codec, tốc độ và bộ nhớ phụ thuộc trình duyệt và máy. Xuất video dài có thể dùng nhiều RAM.
+
+Kiểm tra tự động: `npm test`. Kiểm tra giải mã AAC thực tế dùng FFmpeg nếu máy có sẵn; bài đó được bỏ qua nếu không tìm thấy FFmpeg.
