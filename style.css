@@ -97,3 +97,5 @@ h3,.pane-title{font-size:12px}.camera-title select#previewZoom{width:72px;max-wi
 
 /* Compact lane headers retain controls and property names. */
 .timeline .track-name{width:110px;flex-basis:110px}.time-ruler{grid-template-columns:110px minmax(0,1fr)}.timeline .object-track-label{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}.track-lock{width:22px;min-width:22px;height:20px!important;min-height:20px!important;padding:0;border:0;background:transparent;font-size:11px;line-height:20px}.timeline .reorder-grip{width:14px}.timeline .hold-key-button{margin-left:auto}
+
+.clip-bar.clip-copy-ghost{opacity:.6;pointer-events:none;z-index:5;outline:1px dashed #fff}
