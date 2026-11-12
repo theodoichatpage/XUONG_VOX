@@ -1,7 +1,7 @@
 import {clipBounds,moveClipIntervals,splitLayerAt} from './model.js';
 import {addSplitToGroup,removeMissingGroupMembers} from './groups.js';
 export function splitSelectedLayers(project,ids,time,makeId){let out=[];for(const id of ids){let index=project.layers.findIndex(l=>l.id===id);if(index<0||project.layers[index].locked)continue;let original=project.layers[index],split=splitLayerAt(original,time,project.duration,makeId());if(!split)continue;let [left,right]=split;left.laneId=right.laneId=original.laneId||original.id;project.layers.splice(index,1,left,right);addSplitToGroup(project,id,right.id);out.push(left.id,right.id)}return out}
-export function placeOnLane(project,sourceId,targetId){if(sourceId===targetId)return false;let source=project.layers.find(l=>l.id===sourceId),target=project.layers.find(l=>l.id===targetId);if(!source||!target)throw Error('Không tìm thấy layer');if(source.locked||target.locked)throw Error('Hãy mở khóa layer trước');let lane=target.laneId||target.id,members=project.layers.filter(l=>(l.laneId||l.id)===lane&&l.id!==source.id),a=clipBounds(source,project.duration);if(members.some(l=>{let b=clipBounds(l,project.duration);return a.start<b.end&&b.start<a.end}))throw Error('Các đoạn trên cùng hàng không được chồng thời gian');source.laneId=lane;target.laneId=lane;let targetGroup=(project.groups||[]).find(g=>g.layerIds.includes(target.id));for(const group of project.groups||[])group.layerIds=group.layerIds.filter(id=>id!==source.id);if(targetGroup){let index=targetGroup.layerIds.indexOf(target.id);targetGroup.layerIds.splice(index+1,0,source.id)}removeMissingGroupMembers(project);return true}
+export function placeOnLane(project,sourceId,targetId){if(sourceId===targetId)return false;let source=project.layers.find(l=>l.id===sourceId),target=project.layers.find(l=>l.id===targetId);if(!source||!target)throw Error('Không tìm thấy layer');if(source.locked||target.locked)throw Error('Hãy mở khóa layer trước');let lane=target.laneId||target.id,members=project.layers.filter(l=>(l.laneId||l.id)===lane&&l.id!==source.id),a=clipBounds(source,project.duration);if(members.some(l=>{let b=clipBounds(l,project.duration);return a.start<b.end-EDGE_EPSILON&&b.start<a.end-EDGE_EPSILON}))throw Error('Các đoạn trên cùng hàng không được chồng thời gian');source.laneId=lane;target.laneId=lane;let targetGroup=(project.groups||[]).find(g=>g.layerIds.includes(target.id));for(const group of project.groups||[])group.layerIds=group.layerIds.filter(id=>id!==source.id);if(targetGroup){let index=targetGroup.layerIds.indexOf(target.id);targetGroup.layerIds.splice(index+1,0,source.id)}removeMissingGroupMembers(project);return true}
 
 const EDGE_EPSILON=1e-8;
 
@@ -38,6 +38,19 @@ export function fitClipOffset({min,max,obstacles},requested,snapDistance=0){
   const candidates=legal(target)?edges.filter(edge=>Math.abs(edge-target)<=snapDistance):[...edges,min,max];
   const closest=candidates.reduce((best,edge)=>legal(edge)&&(best===null||Math.abs(edge-target)<Math.abs(best-target))?edge:best,null);
   return closest??(legal(target)?target:null);
+}
+
+export function fitClipOnLane(project,item,target,requested,snapDistance){
+  if(item.locked||target.locked)return null;
+  const {start,end}=clipBounds(item,project.duration);
+  const lane=target.laneId||target.id;
+  const obstacles=project.layers.filter(other=>other!==item&&(other.laneId||other.id)===lane)
+    .map(other=>clipBounds(other,project.duration))
+    .filter(other=>other.end>other.start)
+    .map(other=>({min:other.start-end,max:other.end-start}));
+  const bounded=Math.max(-start,Math.min(project.duration-end,requested));
+  const offset=fitClipOffset({min:-start,max:project.duration-end,obstacles},bounded,snapDistance);
+  return offset!==null&&Math.abs(offset-bounded)<=snapDistance+EDGE_EPSILON?offset:null;
 }
 
 export function exactClipEdge(value,neighbors,edge){

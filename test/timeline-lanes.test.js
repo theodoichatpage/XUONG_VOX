@@ -69,3 +69,16 @@ test('separates legacy overlapping clips without shifting time or changing stack
   separateOverlappingLanes(project);
   assert.equal(b.laneId,repairedLane);
 });
+
+test('a direct row drop uses its requested time and only snaps nearby edges',async()=>{
+  const {fitClipOnLane}=await import('../timeline-lanes.js');
+  const source={id:'source',clipStart:0,clipEnd:2};
+  const target={id:'target',clipStart:4,clipEnd:7};
+  const project={duration:10,layers:[source,target]};
+  assert.equal(fitClipOnLane(project,source,target,0,0),0);
+  assert.equal(fitClipOnLane(project,source,target,3,0.1),null);
+  assert.equal(fitClipOnLane(project,source,target,2+1/30,0.06),2);
+  assert.equal(fitClipOnLane(project,source,target,2+1/30,0),null);
+  target.locked=true;
+  assert.equal(fitClipOnLane(project,source,target,0,0.06),null);
+});
