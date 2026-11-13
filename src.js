@@ -480,7 +480,7 @@ function seekTransitionStart(transition){
   seekAudio();
   applyAtTime();
 }
-function applyJoinCard(type,ids){
+function applyJoinCard(type,ids,curve=$('#ease').value){
   const pair=joinPair(ids);
   if(!pair||pair.some(layer=>layer.locked)){
     transitionHint('Chọn hai clip đặt sát nhau và đã mở khóa.');
@@ -489,7 +489,7 @@ function applyJoinCard(type,ids){
   const duration=$('#transitionDuration');
   try{
     const draft=pair.map(layer=>({...layer}));
-    const actual=createJoinTransition(...draft,Number(duration.value),type,project.duration);
+    const actual=createJoinTransition(...draft,Number(duration.value),type,project.duration,curve);
     clearPairTransitions(pair);
     for(let i=0;i<pair.length;i++)pair[i].transition=draft[i].transition;
     duration.value=Number(actual.toFixed(3));
@@ -523,7 +523,7 @@ $('#removeTransition').onclick=()=>{
 };
 $('#transitionDuration').onchange=()=>{
   const pair=joinPair(currentJoin());
-  if(pair?.[0].transition?.partner===pair[1].id)applyJoinCard(pair[0].transition.type,pair.map(layer=>layer.id));
+  if(pair?.[0].transition?.partner===pair[1].id)applyJoinCard(pair[0].transition.type,pair.map(layer=>layer.id),pair[0].transition.easing??null);
 };
 function appendTransitionJoins(laneRails){
   const clipsByLane=new Map();
@@ -552,8 +552,11 @@ function appendTransitionJoins(laneRails){
       button.style.left=(100*cut/project.duration)+'%';
       button.onclick=event=>{
         event.stopPropagation();
+        selectedKey=null;
+        selectedKeys.clear();
         selectedClips=new Set(ids);
         if(applied){
+          $('#ease').value=edge.easing||'easeInOut';
           $('#transitionDuration').value=Number((edge.end-edge.start).toFixed(3));
           seekTransitionStart(edge);
         }
@@ -571,6 +574,8 @@ function appendTransitionJoins(laneRails){
         event.preventDefault();
         event.stopPropagation();
         document.body.classList.remove('dragging-transition');
+        selectedKey=null;
+        selectedKeys.clear();
         selectedClips=new Set(ids);
         applyJoinCard(type,ids);
       };
@@ -593,7 +598,15 @@ trackRoot.addEventListener('pointermove',e=>{if(!selectionDrag||e.pointerId!==se
 function endSelection(e){if(!selectionDrag||e.pointerId!==selectionDrag.id)return;let d=selectionDrag;selectionDrag=null;if(!d.active)return;let r=d.box.getBoundingClientRect();d.box.remove();if(e.type==='pointercancel')return;if(!d.add){selectedKeys.clear();selectedClips.clear();selectedAudio=false}const intersects=el=>{let b=el.getBoundingClientRect();return b.right>=r.left&&b.left<=r.right&&b.bottom>=r.top&&b.top<=r.bottom};for(const [el,key] of keyElements)if(intersects(el))selectedKeys.add(key);for(const bar of trackRoot.querySelectorAll('.clip-bar'))if(intersects(bar))selectedClips.add(bar.dataset.layerId);let audioBar=trackRoot.querySelector('.audio-bar');if(audioBar&&intersects(audioBar))selectedAudio=true;selectedKey=selectedKeys.size?[...selectedKeys][0]:null;suppressRailClick=true;setTimeout(()=>suppressRailClick=false,0);renderTracks();message('Đã chọn '+selectedKeys.size+' keyframe, '+selectedClips.size+' thanh')}
 trackRoot.addEventListener('pointerup',endSelection);trackRoot.addEventListener('pointercancel',endSelection);trackRoot.addEventListener('click',e=>{if(suppressRailClick){e.preventDefault();e.stopImmediatePropagation()}},true);
 document.addEventListener('keydown',e=>{if(e.ctrlKey||e.metaKey||e.altKey||e.repeat||busy)return;let target=e.target;if(target instanceof HTMLElement&&(target.isContentEditable||/^(TEXTAREA|SELECT)$/.test(target.tagName)||(target.tagName==='INPUT'&&target.type!=='range')))return;let k=e.key.toLowerCase();if(k==='t'){e.preventDefault();setInspectorTab('text');if(current()?.kind==='text')$('#textContent')?.focus()}else if(k==='c'){e.preventDefault();trimSelectedClips()}else if(k==='x'){e.preventDefault();trimTimelineToPlayhead()}else if(k==='d'){e.preventDefault();deleteTimelineSelection()}});
-$('#addKey').onclick=()=>{let item=current();if(item?.locked)return;let value=selectedValue(),props=Object.keys(value).filter(p=>item.animated[p]);if(!props.length){message('Bật nút ◷ ở đầu dòng thông số cần tạo keyframe');return}selectedKeys.clear();selectedClips.clear();for(const prop of props){selectedKey=putPropertyKey(item,prop,time,value[prop],$('#ease').value);selectedKeys.add(selectedKey)}$('#keyTime').value=time.toFixed(2);renderTracks();scheduleSave()};$('#deleteKey').onclick=()=>deleteTimelineSelection(true);$('#moveKey').onclick=()=>{if(!selectedKey||project.layers.some(l=>l.locked&&l.keys?.includes(selectedKey)))return;selectedKey.time=clamp(Number($('#keyTime').value),0,project.duration);time=selectedKey.time;seekAudio();renderTracks();applyAtTime();scheduleSave()};$('#ease').onchange=()=>{let keys=selectedKeys.size?[...selectedKeys]:selectedKey?[selectedKey]:[];if(!keys.length)return;for(const key of keys)key.easing=$('#ease').value;renderTracks();applyAtTime();scheduleSave()};$('#time').oninput=e=>{time=Number(e.target.value);seekAudio();applyAtTime();showFields()};function renderTicks(){let box=$('#ticks');box.replaceChildren();for(let i=0;i<=10;i++){let mark=document.createElement('span');mark.textContent=Number((project.duration*i/10).toFixed(1))+'s';mark.style.left=(i*10)+'%';box.append(mark)}}
+$('#addKey').onclick=()=>{let item=current();if(item?.locked)return;let value=selectedValue(),props=Object.keys(value).filter(p=>item.animated[p]);if(!props.length){message('Bật nút ◷ ở đầu dòng thông số cần tạo keyframe');return}selectedKeys.clear();selectedClips.clear();for(const prop of props){selectedKey=putPropertyKey(item,prop,time,value[prop],$('#ease').value);selectedKeys.add(selectedKey)}$('#keyTime').value=time.toFixed(2);renderTracks();scheduleSave()};$('#deleteKey').onclick=()=>deleteTimelineSelection(true);$('#moveKey').onclick=()=>{if(!selectedKey||project.layers.some(l=>l.locked&&l.keys?.includes(selectedKey)))return;selectedKey.time=clamp(Number($('#keyTime').value),0,project.duration);time=selectedKey.time;seekAudio();renderTracks();applyAtTime();scheduleSave()};$('#ease').onchange=()=>{let keys=selectedKeys.size?[...selectedKeys]:selectedKey?[selectedKey]:[];if(!keys.length){
+  const pair=joinPair(currentJoin());
+  const edge=pair?.[0].transition;
+  if(!edge?.atJoin||edge.partner!==pair[1].id||pair.some(layer=>layer.locked))return;
+  for(const layer of pair)layer.transition.easing=$('#ease').value;
+  applyAtTime();
+  scheduleSave();
+  return;
+}for(const key of keys)key.easing=$('#ease').value;renderTracks();applyAtTime();scheduleSave()};$('#time').oninput=e=>{time=Number(e.target.value);seekAudio();applyAtTime();showFields()};function renderTicks(){let box=$('#ticks');box.replaceChildren();for(let i=0;i<=10;i++){let mark=document.createElement('span');mark.textContent=Number((project.duration*i/10).toFixed(1))+'s';mark.style.left=(i*10)+'%';box.append(mark)}}
 $('#duration').onchange=e=>{project.duration=clamp(Number(e.target.value)||10,1,Math.max(60,project.duration));e.target.value=project.duration;$('#time').max=project.duration;time=Math.min(time,project.duration);renderTicks();renderTracks();applyAtTime();scheduleSave()};
 $('#copyProperties').onclick=()=>{let item=current();if(!item)return;propertyClipboard={type:selected==='camera'?'camera':'layer',value:structuredClone(selectedValue()),color:selected==='camera'?null:(item.color||'#888888')};message('Đã sao chép toàn bộ thông số')};
 $('#pasteProperties').onclick=()=>{if(!propertyClipboard){message('Hãy sao chép thông số trước');return}let kind=selected==='camera'?'camera':'layer';if(propertyClipboard.type!==kind){message('Chỉ dán thông số ảnh sang ảnh hoặc camera sang camera');return}let item=current();if(kind==='layer')item.color=propertyClipboard.color;mutateValue(v=>Object.assign(v,structuredClone(propertyClipboard.value)));showFields();message('Đã dán toàn bộ thông số')};

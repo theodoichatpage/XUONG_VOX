@@ -22,3 +22,14 @@ test('a transition on a touching cut preserves clip bounds and fits the shorter 
   assert.equal(transitionAt(b,2).y,-2);
   assert.equal(clipJoin(a,{id:'gap',clipStart:3,clipEnd:4},5),null);
 });
+
+test('join transitions apply the selected easing to both clips',()=>{
+  const a={id:'a',clipEnd:2},b={id:'b',clipStart:2,clipEnd:4};
+  for(const [curve,offset] of [['linear',-2],['easeIn',-1],['easeOut',-3],['easeInOut',-2]]){
+    createJoinTransition(a,b,1,'slide',4,curve);
+    assert.equal(a.transition.easing,curve);
+    assert.equal(b.transition.easing,curve);
+    assert.equal(transitionAt(a,2).x,offset);
+    assert.equal(transitionAt(b,2).x,4+offset);
+  }
+});
