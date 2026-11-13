@@ -215,7 +215,8 @@ function appendShapeFields(box,item,value){
     item.src=canvas.toDataURL('image/png');
     const mesh=meshes.get(item.id);
     if(mesh){
-      mesh.material.map.image=canvas;
+      mesh.material.map.image=mesh.userData.arrowTip?shapeCanvas({...shape,type:'line'}):canvas;
+      mesh.userData.arrowTip?.material.color.set(shape.color);
       mesh.material.map.needsUpdate=true;
     }else rebuild();
     renderLayerList();
@@ -310,6 +311,12 @@ function rebuild(){
   selectedKey=null;
   for(const mesh of meshes.values()){
     scene.remove(mesh);
+    const tip=mesh.userData.arrowTip;
+    if(tip){
+      scene.remove(tip);
+      tip.geometry.dispose();
+      tip.material.dispose();
+    }
     mesh.geometry.dispose();
     mesh.material.map?.dispose();
     mesh.material.dispose();
@@ -340,7 +347,8 @@ function rebuild(){
 
     return images.get(src).then(image=>{
       if(!image||version!==rebuildVersion||layer.src!==src||!project.layers.includes(layer))return;
-      const texture=new THREE.Texture(image);
+      const arrow=layer.shape?.type==='arrow';
+      const texture=new THREE.Texture(arrow?shapeCanvas({...layer.shape,type:'line'}):image);
       texture.needsUpdate=true;
       texture.colorSpace=THREE.SRGBColorSpace;
       const aspect=image.width/image.height;
@@ -349,6 +357,19 @@ function rebuild(){
         new THREE.MeshBasicMaterial({map:texture,transparent:true,side:THREE.DoubleSide,depthWrite:false}),
       );
       mesh.userData.id=layer.id;
+      if(arrow){
+        const triangle=new THREE.Shape();
+        triangle.moveTo(0,-.5);
+        triangle.lineTo(1,0);
+        triangle.lineTo(0,.5);
+        triangle.closePath();
+        const tip=new THREE.Mesh(new THREE.ShapeGeometry(triangle),new THREE.MeshBasicMaterial({
+          color:layer.shape.color,transparent:true,side:THREE.DoubleSide,depthWrite:false,
+        }));
+        tip.userData.id=layer.id;
+        mesh.userData.arrowTip=tip;
+        scene.add(tip);
+      }
       scene.add(mesh);
       meshes.set(layer.id,mesh);
       applyLayerAtTime(layer,mesh);
@@ -423,15 +444,30 @@ function applyLayerAtTime(layer,mesh){
     mesh.scale.y*=scale;
   }
   const length=clamp((value.length??100)/100,0,1);
-  if(layer.shape&&(layer.shape.type==='line'||layer.shape.type==='arrow')){
-    const shift=new THREE.Vector3(mesh.geometry.parameters.width*mesh.scale.x*(length-1)/2,0,0);
-    mesh.position.add(shift.applyQuaternion(mesh.quaternion));
-    mesh.scale.x*=length;
-    // Reveal the matching portion of the line texture instead of squeezing it.
-    mesh.material.map.repeat.x=length;
-  }
   const duringJoin=edge?.atJoin&&time>=edge.start&&time<edge.end;
   mesh.visible=length>0&&(layerVisibleAt(layer,time,project.duration)||!!(duringJoin&&layer.visible!==false));
+  if(layer.shape&&(layer.shape.type==='line'||layer.shape.type==='arrow')){
+    const direction=Math.sign(mesh.scale.x)||1;
+    const fullWidth=mesh.geometry.parameters.width*Math.abs(mesh.scale.x);
+    const width=fullWidth*length;
+    const tip=mesh.userData.arrowTip;
+    // Size the triangle from stroke thickness, independently of the shaft length.
+    const tipHeight=layer.shape.thickness*Math.abs(mesh.scale.y)*4/128*2.6;
+    const tipWidth=tip?Math.min(width,tipHeight*1.15):0;
+    const shaftWidth=width-tipWidth;
+    const left=-fullWidth/2;
+    if(tip){
+      tip.position.copy(mesh.position).add(new THREE.Vector3(direction*(left+shaftWidth),0,0).applyQuaternion(mesh.quaternion));
+      tip.quaternion.copy(mesh.quaternion);
+      tip.scale.set(direction*tipWidth,tipHeight,1);
+      tip.material.opacity=mesh.material.opacity;
+      tip.visible=mesh.visible&&tipWidth>0;
+    }
+    mesh.position.add(new THREE.Vector3(direction*(left+shaftWidth/2),0,0).applyQuaternion(mesh.quaternion));
+    mesh.scale.x=direction*shaftWidth/mesh.geometry.parameters.width;
+    mesh.material.map.repeat.x=fullWidth?shaftWidth/fullWidth:0;
+    mesh.visible=mesh.visible&&shaftWidth>0;
+  }
 }
 function applyAtTime(exporting=false){needsRender=true;if(project.audio){let range=clipBounds(project.audio,project.duration);audioElement.muted=time<range.start||time>=range.end;if(playing&&time>=range.start&&time<range.end&&Math.abs(audioElement.currentTime-(time-range.start))>.2)seekAudio()}const c=evaluateEntity(project.camera,time);active.position.fromArray(c.position);active.fov=c.fov;active.updateProjectionMatrix();const heading=project.camera.fixedHeading;if(heading)active.quaternion.fromArray(heading);else active.lookAt(...c.target);active.rotateX(THREE.MathUtils.degToRad(c.rotation[0]));active.rotateY(THREE.MathUtils.degToRad(c.rotation[1]));active.rotateZ(THREE.MathUtils.degToRad(c.rotation[2]));active.updateMatrixWorld();portraitCamera.position.copy(active.position);portraitCamera.quaternion.copy(active.quaternion);portraitCamera.fov=active.fov;portraitCamera.updateProjectionMatrix();portraitCamera.updateMatrixWorld();cameraHelper.update();cameraHandle.position.fromArray(c.position);cameraIcon.position.copy(active.position);cameraIcon.quaternion.copy(active.quaternion);for(const l of project.layers){let mesh=meshes.get(l.id);if(!mesh)continue;applyLayerAtTime(l,mesh)}if(selected!=='camera'){const m=meshes.get(selected);if(m&&((m.visible&&gizmo.object!==m)||(!m.visible&&gizmo.object===m)))attach()}if(!exporting){updatePlayhead();$('#time').value=time;$('#timeLabel').textContent=time.toFixed(2)+'s'}}
 function current(){return selected==='camera'?project.camera:project.layers.find(x=>x.id===selected)}function selectedValue(){return evaluateEntity(current(),time)}function mutateValue(fn){let item=current();if(item?.locked)return;const changed=editEntity(item,time,fn,$('#ease').value);if(changed.length){selectedKey=changed[changed.length-1];selectedKeys.clear();for(const k of changed)selectedKeys.add(k)}renderTracks();applyAtTime();scheduleSave()}
@@ -465,7 +501,7 @@ function attach(){needsRender=true;let m=selected==='camera'?cameraHandle:meshes
 // Use the visible pixel beneath a click, so transparent parts of PNGs do not block layers behind them.
 const layerRaycaster=new THREE.Raycaster(),alphaCanvases=new WeakMap();
 function opaqueAtIntersection(hit){if(!hit.uv)return true;const image=hit.object.material.map?.image;if(!image)return true;try{let context=alphaCanvases.get(image);if(!context){let canvas=document.createElement('canvas');canvas.width=image.naturalWidth||image.width;canvas.height=image.naturalHeight||image.height;context=canvas.getContext('2d',{willReadFrequently:true});context.drawImage(image,0,0);alphaCanvases.set(image,context)}let x=Math.min(context.canvas.width-1,Math.max(0,Math.floor(hit.uv.x*hit.object.material.map.repeat.x*context.canvas.width))),y=Math.min(context.canvas.height-1,Math.max(0,Math.floor((1-hit.uv.y)*context.canvas.height)));return context.getImageData(x,y,1,1).data[3]>10}catch{return true}}
-function enableImageSelection(canvas,getCamera,usesGizmo){let click=null;canvas.addEventListener('pointerdown',e=>{if(e.button!==0||!e.isPrimary)return;click={id:e.pointerId,x:e.clientX,y:e.clientY,gizmo:usesGizmo&&!!gizmo.axis}});canvas.addEventListener('pointercancel',()=>{click=null});canvas.addEventListener('pointerup',e=>{if(!click||click.id!==e.pointerId)return;let start=click;click=null;if(start.gizmo||gizmo.dragging||Math.hypot(e.clientX-start.x,e.clientY-start.y)>4)return;let rect=canvas.getBoundingClientRect();if(!rect.width||!rect.height)return;let pointer=new THREE.Vector2((e.clientX-rect.left)/rect.width*2-1,-((e.clientY-rect.top)/rect.height)*2+1);scene.updateMatrixWorld(true);const camera=getCamera();camera.updateMatrixWorld(true);layerRaycaster.setFromCamera(pointer,camera);let candidates=[...meshes.values()].filter(mesh=>mesh.visible);if(usesGizmo)candidates.push(...cameraIconParts);let hits=layerRaycaster.intersectObjects(candidates,false);hits.sort((a,b)=>Math.abs(a.distance-b.distance)>1e-7?a.distance-b.distance:project.layers.findIndex(l=>l.id===a.object.userData.id)-project.layers.findIndex(l=>l.id===b.object.userData.id));let cameraHit=usesGizmo?hits.find(hit=>hit.object.userData.cameraIcon):null;let hit=cameraHit||firstVisibleHit(hits,opaqueAtIntersection);if(hit)selectFromViewport(hit.object.userData.cameraIcon?'camera':hit.object.userData.id)})}
+function enableImageSelection(canvas,getCamera,usesGizmo){let click=null;canvas.addEventListener('pointerdown',e=>{if(e.button!==0||!e.isPrimary)return;click={id:e.pointerId,x:e.clientX,y:e.clientY,gizmo:usesGizmo&&!!gizmo.axis}});canvas.addEventListener('pointercancel',()=>{click=null});canvas.addEventListener('pointerup',e=>{if(!click||click.id!==e.pointerId)return;let start=click;click=null;if(start.gizmo||gizmo.dragging||Math.hypot(e.clientX-start.x,e.clientY-start.y)>4)return;let rect=canvas.getBoundingClientRect();if(!rect.width||!rect.height)return;let pointer=new THREE.Vector2((e.clientX-rect.left)/rect.width*2-1,-((e.clientY-rect.top)/rect.height)*2+1);scene.updateMatrixWorld(true);const camera=getCamera();camera.updateMatrixWorld(true);layerRaycaster.setFromCamera(pointer,camera);let candidates=[...meshes.values()].flatMap(mesh=>[mesh,mesh.userData.arrowTip]).filter(mesh=>mesh?.visible);if(usesGizmo)candidates.push(...cameraIconParts);let hits=layerRaycaster.intersectObjects(candidates,false);hits.sort((a,b)=>Math.abs(a.distance-b.distance)>1e-7?a.distance-b.distance:project.layers.findIndex(l=>l.id===a.object.userData.id)-project.layers.findIndex(l=>l.id===b.object.userData.id));let cameraHit=usesGizmo?hits.find(hit=>hit.object.userData.cameraIcon):null;let hit=cameraHit||firstVisibleHit(hits,opaqueAtIntersection);if(hit)selectFromViewport(hit.object.userData.cameraIcon?'camera':hit.object.userData.id)})}
 function selectFromViewport(id){if(id!=='camera'){for(const group of project.groups||[])if(group.layerIds?.includes(id))group.collapsed=false}select(id);if(id!=='camera'){selectedClips.add(id);renderTracks();let bar=[...document.querySelectorAll('.timeline .clip-bar')].find(el=>el.dataset.layerId===id);bar?.closest('.track')?.scrollIntoView({block:'nearest',inline:'nearest'})}}
 enableImageSelection(renderer.domElement,()=>custom,true);
 enableImageSelection(previewRenderer.domElement,()=>project.aspect==='portrait'?portraitCamera:active,false);
