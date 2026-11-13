@@ -1,3 +1,28 @@
 import {clipBounds} from './model.js';
-export function createTransition(outgoing,incoming,time,duration,type,total){if(!outgoing||!incoming||outgoing.id===incoming.id)throw Error('Chọn hai layer khác nhau');if(!['fade','slide'].includes(type)||!Number.isFinite(duration)||duration<=0)throw Error('Chọn hiệu ứng và thời lượng hợp lệ');let start=time-duration/2,end=time+duration/2,a=clipBounds(outgoing,total),b=clipBounds(incoming,total);if(start<Math.max(a.start,b.start)||end>Math.min(a.end,b.end))throw Error('Hai layer cần chồng thời gian đủ rộng quanh vạch thời gian');outgoing.transition={role:'out',type,start,end,partner:incoming.id};incoming.transition={role:'in',type,start,end,partner:outgoing.id}}
-export function transitionAt(layer,time){let t=layer.transition;if(!t||!(t.end>t.start))return {alpha:1,x:0};let p=Math.max(0,Math.min(1,(time-t.start)/(t.end-t.start)));p=p*p*(3-2*p);return t.type==='fade'?{alpha:t.role==='out'?1-p:p,x:0}:{alpha:1,x:t.role==='out'?-4*p:4*(1-p)}}
+
+const slideDirections=new Map([
+  ['slide',[-4,0]],
+  ['slide-right',[4,0]],
+  ['slide-up',[0,4]],
+  ['slide-down',[0,-4]],
+]);
+
+export const transitionOptions=[
+  ['fade','Mờ dần'],
+  ['slide','Trượt trái'],
+  ['slide-right','Trượt phải'],
+  ['slide-up','Trượt lên'],
+  ['slide-down','Trượt xuống'],
+];
+export function createTransition(outgoing,incoming,time,duration,type,total){if(!outgoing||!incoming||outgoing.id===incoming.id)throw Error('Chọn hai layer khác nhau');if((type!=='fade'&&!slideDirections.has(type))||!Number.isFinite(duration)||duration<=0)throw Error('Chọn hiệu ứng và thời lượng hợp lệ');let start=time-duration/2,end=time+duration/2,a=clipBounds(outgoing,total),b=clipBounds(incoming,total);if(start<Math.max(a.start,b.start)||end>Math.min(a.end,b.end))throw Error('Hai layer cần chồng thời gian đủ rộng quanh vạch thời gian');outgoing.transition={role:'out',type,start,end,partner:incoming.id};incoming.transition={role:'in',type,start,end,partner:outgoing.id}}
+export function transitionAt(layer,time){
+  const transition=layer.transition;
+  if(!transition||!(transition.end>transition.start))return {alpha:1,x:0,y:0};
+  const progress=Math.max(0,Math.min(1,(time-transition.start)/(transition.end-transition.start)));
+  const eased=progress*progress*(3-2*progress);
+  const outgoing=transition.role==='out';
+  if(transition.type==='fade')return {alpha:outgoing?1-eased:eased,x:0,y:0};
+  const [x,y]=slideDirections.get(transition.type)||slideDirections.get('slide');
+  const offset=outgoing?eased:eased-1;
+  return {alpha:1,x:x*offset||0,y:y*offset||0};
+}
