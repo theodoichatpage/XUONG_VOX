@@ -237,3 +237,10 @@ header .project-picker #projectList{min-width:108px;max-width:170px}
 #app .timeline .transition-join.applied{color:#d4f733}
 .dragging-transition #app .transition-join{width:24px;height:21px;min-height:21px}
 .dragging-transition #app .transition-join:hover{background:#586a23}
+
+.image-strip-settings{border-top:1px solid #303237;margin-top:10px;padding-top:6px}
+.image-strip-settings label{display:flex;justify-content:space-between;align-items:center;gap:6px;margin:5px 0}
+.image-strip-settings label[hidden]{display:none}
+.image-strip-settings input{width:60px}
+.image-strip-settings select{min-width:0;max-width:65%}
+.image-strip-settings p{color:#c5c9d0;line-height:1.4}
