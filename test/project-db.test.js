@@ -1,0 +1,27 @@
+import {test} from 'node:test';import assert from 'node:assert/strict';import {indexedDB} from 'fake-indexeddb';import {readProjectValue,persistProject} from '../project-db.js';
+test('legacy project migrates and separate projects survive reload',async()=>{let req=indexedDB.open('test-projects-'+Math.random(),1);let db=await new Promise((resolve,reject)=>{req.onupgradeneeded=()=>req.result.createObjectStore('projects');req.onsuccess=()=>resolve(req.result);req.onerror=()=>reject(req.error)});let a={projectId:'one',name:'Một',layers:[{id:'first'}]},b={projectId:'two',name:'Hai',layers:[{id:'second'}]};let index=await persistProject(db,a,[]);index=await persistProject(db,b,index);assert.deepEqual((await readProjectValue(db,'project:one')).layers,a.layers);assert.deepEqual((await readProjectValue(db,'project:two')).layers,b.layers);assert.equal((await readProjectValue(db,'current')).projectId,'two');assert.deepEqual((await readProjectValue(db,'project-index')).map(x=>x.id),['two','one']);db.close()});
+test('multiple scenes and project states survive save, switch and reload',async()=>{const {ensureScenes,syncActiveScene,applyScene,addScene}=await import('../scenes.js');let req=indexedDB.open('test-scenes-'+Math.random(),1);let db=await new Promise((resolve,reject)=>{req.onupgradeneeded=()=>req.result.createObjectStore('projects');req.onsuccess=()=>resolve(req.result);req.onerror=()=>reject(req.error)});let p={projectId:'p',name:'Test',duration:5,layers:[{id:'image',src:'data:image/png;base64,AA=='}],camera:{value:{position:[1,2,3]}}};ensureScenes(p,()=> 'first');syncActiveScene(p);addScene(p,'second',{duration:8,layers:[{id:'text',kind:'text'}],camera:{value:{position:[8,9,10]}}},'Hai');applyScene(p,'second');p.layers[0].name='Tiêu đề';syncActiveScene(p);await persistProject(db,p,[]);let saved=await readProjectValue(db,'project:p');assert.equal(saved.activeSceneId,'second');assert.equal(saved.scenes[1].state.layers[0].name,'Tiêu đề');applyScene(saved,'first');assert.equal(saved.layers[0].id,'image');assert.deepEqual(saved.camera.value.position,[1,2,3]);db.close()});
+test('deleting a project updates index and current project atomically',async()=>{let {deleteProject}=await import('../project-db.js');let req=indexedDB.open('test-delete-'+Math.random(),1),db=await new Promise((resolve,reject)=>{req.onupgradeneeded=()=>req.result.createObjectStore('projects');req.onsuccess=()=>resolve(req.result);req.onerror=()=>reject(req.error)});let a={projectId:'a',name:'A'},b={projectId:'b',name:'B'},index=await persistProject(db,a,[]);index=await persistProject(db,b,index);index=await deleteProject(db,'a',index,b);assert.equal(await readProjectValue(db,'project:a'),undefined);assert.equal((await readProjectValue(db,'current')).projectId,'b');assert.deepEqual(index.map(p=>p.id),['b']);db.close()});
+
+test('project writes snapshot both records before the editor can mutate them',async()=>{
+  const request=indexedDB.open('test-write-snapshot',1);
+  const db=await new Promise((resolve,reject)=>{
+    request.onupgradeneeded=()=>request.result.createObjectStore('projects');
+    request.onsuccess=()=>resolve(request.result);
+    request.onerror=()=>reject(request.error);
+  });
+  try{
+    const project={projectId:'snapshot',name:'Before',layers:[{id:'layer',name:'Original'}]};
+    const saving=persistProject(db,project,[]);
+    project.name='After';
+    project.layers[0].name='Edited';
+    assert.equal((await saving)[0].name,'Before');
+    for(const key of ['current','project:snapshot']){
+      const saved=await readProjectValue(db,key);
+      assert.equal(saved.name,'Before');
+      assert.equal(saved.layers[0].name,'Original');
+    }
+  }finally{
+    db.close();
+  }
+});
