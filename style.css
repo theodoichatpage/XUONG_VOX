@@ -252,3 +252,10 @@ header .project-picker #projectList{min-width:108px;max-width:170px}
 .history-line-form>div{display:flex;justify-content:flex-end;gap:6px}
 
 #cameraFrame,#portraitFrame{border:0;box-shadow:none}
+
+#mediaPane .workspace-panel-title{min-height:26px;height:auto;flex-wrap:wrap}
+.media-panel-tabs{display:flex;gap:4px;align-items:center}
+.media-panel-tabs button[aria-pressed="true"]{background:#d4f733;color:#101309}
+#graphicsPanel h3{margin:10px 0 6px}
+.graphics-items{display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:6px}
+#app .graphics-items button{height:auto;min-height:36px;padding:4px;text-align:left}
