@@ -244,3 +244,11 @@ header .project-picker #projectList{min-width:108px;max-width:170px}
 .image-strip-settings input{width:60px}
 .image-strip-settings select{min-width:0;max-width:65%}
 .image-strip-settings p{color:#c5c9d0;line-height:1.4}
+
+.history-line-form{display:grid;gap:10px}
+.history-line-form h3{margin:0}
+.history-line-form label{display:flex;justify-content:space-between;align-items:center;gap:12px}
+.history-line-form input{width:64px}
+.history-line-form>div{display:flex;justify-content:flex-end;gap:6px}
+
+#cameraFrame,#portraitFrame{border:0;box-shadow:none}
