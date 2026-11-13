@@ -224,3 +224,16 @@ header .project-picker #projectList{min-width:108px;max-width:170px}
 #timelineCanvas{min-height:100%}
 #timelineNewRow{position:relative;margin-left:164px;height:24px}
 #timelineNewRow.clip-drop-valid{box-shadow:inset 0 0 0 1px #d4f733}
+
+.transition-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(78px,1fr));gap:6px;margin-top:8px}
+#app .transition-cards button[data-transition]{height:auto;min-height:54px;padding:4px;cursor:grab}
+.transition-cards button span{display:block;font-size:21px;line-height:24px;color:#d4f733}
+#transitionHint{min-height:2.6em;color:#c5c9d0}
+#app .timeline .transition-join{
+  position:absolute;top:50%;z-index:6;transform:translate(-50%,-50%);
+  width:13px;height:15px;min-height:15px;padding:0;border-radius:3px;
+  color:#fff;background:#24262a;line-height:13px;
+}
+#app .timeline .transition-join.applied{color:#d4f733}
+.dragging-transition #app .transition-join{width:24px;height:21px;min-height:21px}
+.dragging-transition #app .transition-join:hover{background:#586a23}
