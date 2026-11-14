@@ -125,55 +125,92 @@ function renderLayerEffects(){
   const panel=$('#effect-layer');
   panel.replaceChildren();
   const item=current();
-  if(!item||selected==='camera'||['line','arrow'].includes(item.shape?.type)){
-    panel.textContent='Chọn layer ảnh, chữ hoặc hình tô để chỉnh Shadow và Mask.';
-    return;
-  }
-  const defaults={...effectDefaults,...item.effects};
+  const supported=!!item&&selected!=='camera'&&!['line','arrow'].includes(item.shape?.type);
+  const editable=supported&&!item.locked;
+  const values={...effectDefaults,...(supported?item.effects:null)};
   const title=document.createElement('h3');
-  title.textContent=item.name;
+  title.textContent=supported?item.name:'Chọn layer ảnh, chữ hoặc hình tô để dùng hiệu ứng.';
   panel.append(title);
-  function field(parent,label,key,kind,options){
-    const row=document.createElement('label');
-    row.className='scalar';
-    const control=document.createElement(kind==='select'?'select':'input');
-    if(kind==='select')for(const [id,name] of options)control.add(new Option(name,id));
-    else control.type=kind;
-    if(kind==='number')[control.min,control.max]=options;
-    if(kind==='checkbox')control.checked=defaults[key];
-    else control.value=defaults[key];
-    control.disabled=!!item.locked;
-    control.onchange=()=>{
-      const value=kind==='checkbox'?control.checked:kind==='number'
-        ?clamp(Number(control.value)||0,...options):control.value;
-      item.effects={...effectDefaults,...item.effects,[key]:value};
-      applyAtTime();
-      scheduleSave();
-      renderLayerEffects();
-    };
-    row.append(label,control);
+
+  function update(changes,refresh=false){
+    item.effects={...values,...item.effects,...changes};
+    applyAtTime();
+    scheduleSave();
+    if(refresh)renderLayerEffects();
+  }
+
+  function section(name){
+    const box=document.createElement('fieldset');
+    const legend=document.createElement('legend');
+    legend.textContent=name;
+    box.append(legend);
+    panel.append(box);
+    return box;
+  }
+
+  function choices(parent,options){
+    const row=document.createElement('div');
+    row.className='layer-effect-choices';
+    for(const {name,icon,active,changes} of options){
+      const button=document.createElement('button');
+      button.type='button';
+      button.disabled=!editable;
+      button.setAttribute('aria-pressed',String(active));
+      const preview=document.createElement('span');
+      preview.className='effect-choice-icon '+icon;
+      preview.setAttribute('aria-hidden','true');
+      if(icon==='none')preview.textContent='⊘';
+      button.append(preview,name);
+      button.onclick=()=>{
+        update(changes,true);
+        panel.querySelectorAll('[aria-pressed="true"]')[parent===mask?0:1]?.focus();
+      };
+      row.append(button);
+    }
     parent.append(row);
   }
-  const mask=document.createElement('fieldset'),shadow=document.createElement('fieldset');
-  for(const [box,name] of [[mask,'Mask'],[shadow,'Shadow']]){
-    const legend=document.createElement('legend');legend.textContent=name;box.append(legend);panel.append(box);
+
+  function parameters(parent,enabled,fields){
+    for(const [label,key,kind,min,max] of fields){
+      const row=document.createElement('label');
+      row.className='scalar';
+      const control=document.createElement('input');
+      control.type=kind;
+      if(kind==='number'){control.min=min;control.max=max}
+      if(kind==='checkbox')control.checked=values[key];
+      else control.value=values[key];
+      control.disabled=!editable||!enabled;
+      control.onchange=()=>{
+        const value=kind==='checkbox'?control.checked:kind==='number'
+          ?clamp(Number(control.value)||0,min,max):control.value;
+        if(kind==='number')control.value=value;
+        update({[key]:value});
+      };
+      row.append(label,control);
+      parent.append(row);
+    }
   }
-  field(mask,'Kiểu','mask','select',[['none','Tắt'],['rectangle','Chữ nhật'],['ellipse','Elip']]);
-  if(defaults.mask!=='none'){
-    field(mask,'Rộng (%)','width','number',[1,100]);
-    field(mask,'Cao (%)','height','number',[1,100]);
-    field(mask,'Dịch X (%)','x','number',[-100,100]);
-    field(mask,'Dịch Y (%)','y','number',[-100,100]);
-    field(mask,'Đảo vùng','invert','checkbox');
-  }
-  field(shadow,'Bật bóng đổ','shadow','checkbox');
-  if(defaults.shadow){
-    field(shadow,'Màu','color','color');
-    field(shadow,'Độ đậm (%)','opacity','number',[0,100]);
-    field(shadow,'Độ mờ','blur','number',[0,40]);
-    field(shadow,'Khoảng cách','distance','number',[0,80]);
-    field(shadow,'Góc (°)','angle','number',[0,360]);
-  }
+
+  const mask=section('Mask');
+  choices(mask,[['none','Tắt'],['rectangle','Chữ nhật'],['ellipse','Elip']].map(([type,name])=>({
+    name,icon:type,active:values.mask===type,changes:{mask:type},
+  })));
+  parameters(mask,values.mask!=='none',[
+    ['Rộng (%)','width','number',1,100],['Cao (%)','height','number',1,100],
+    ['Dịch X (%)','x','number',-100,100],['Dịch Y (%)','y','number',-100,100],
+    ['Đảo vùng','invert','checkbox'],
+  ]);
+
+  const shadow=section('Shadow');
+  choices(shadow,[
+    {name:'Tắt',icon:'none',active:!values.shadow,changes:{shadow:false}},
+    {name:'Bóng đổ',icon:'shadow',active:values.shadow,changes:{shadow:true}},
+  ]);
+  parameters(shadow,values.shadow,[
+    ['Màu','color','color'],['Độ đậm (%)','opacity','number',0,100],
+    ['Độ mờ','blur','number',0,40],['Khoảng cách','distance','number',0,80],
+    ['Góc (°)','angle','number',0,360],
+  ]);
 }
 
 function syncLayerEffects(layer,mesh){

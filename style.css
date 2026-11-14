@@ -264,3 +264,16 @@ header .project-picker #projectList{min-width:108px;max-width:170px}
 .effect-sections button[aria-pressed="true"]{background:#d4f733;color:#101309}
 #effect-layer fieldset{min-width:0;border:1px solid #303237;border-radius:5px;margin:8px 0;padding:4px 8px}
 #effect-layer input[type=number]{width:64px}
+
+.layer-effect-choices{display:flex;gap:5px;flex-wrap:wrap;margin:3px 0 8px}
+#app #effect-layer .layer-effect-choices button{
+  display:grid;justify-items:center;align-content:center;gap:4px;
+  min-width:62px;height:46px;min-height:46px;padding:4px;
+}
+#effect-layer .layer-effect-choices button[aria-pressed="true"]{border-color:#d4f733;background:#303822}
+.effect-choice-icon{display:block;width:17px;height:13px;border:1px solid currentColor}
+.effect-choice-icon.none{height:auto;border:0;font-size:16px;line-height:13px}
+.effect-choice-icon.ellipse{border-radius:50%}
+.effect-choice-icon.shadow{box-shadow:3px 3px 2px #000;background:#717783}
+#app #effect-layer input[type=checkbox]{width:13px;height:13px;min-height:0;margin:0}
+#effect-layer :disabled{opacity:.52}
