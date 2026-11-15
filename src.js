@@ -138,7 +138,6 @@ function updatePuppetMarkers(){
   if(!pins.length)return false;
   mesh.updateMatrixWorld(true);
   const {width,height}=mesh.geometry.parameters;
-  const size=Math.min(width*Math.abs(mesh.scale.x),height*Math.abs(mesh.scale.y))*.032;
   for(const [index,pin] of pins.entries()){
     let material=puppetMarkerMaterials[pin.kind];
     if(!material){
@@ -150,7 +149,7 @@ function updatePuppetMarkers(){
       ctx.fill();
       ctx.strokeStyle='#111';ctx.lineWidth=6;ctx.stroke();
       material=puppetMarkerMaterials[pin.kind]=new THREE.SpriteMaterial({
-        map:new THREE.CanvasTexture(canvas),depthTest:false,depthWrite:false,
+        map:new THREE.CanvasTexture(canvas),depthTest:false,depthWrite:false,sizeAttenuation:false,
       });
     }
     let marker=puppetMarkers.children[index];
@@ -166,7 +165,7 @@ function updatePuppetMarkers(){
         marker.position.getComponent(mesh.userData.puppetAxis)+mesh.userData.puppetAmount);
     }
     mesh.localToWorld(marker.position);
-    marker.scale.set(size,size,1);
+    marker.scale.set(.05,.05,1);
   }
   return true;
 }
