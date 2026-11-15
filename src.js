@@ -1,3 +1,4 @@
+import {puppetDefaults,puppetProgress,puppetWeight} from './puppet.js';
 import {motionDefaults,layerMotionAt} from './layer-motion.js';
 import {effectDefaults,paintLayerEffects,paintLayerShadow} from './layer-effects.js';
 import {historyLineLayout} from './history-line.js';
@@ -122,6 +123,129 @@ function showEffectSection(section){
 for(const button of document.querySelectorAll('[data-effect-section]')){
   button.onclick=()=>showEffectSection(button.dataset.effectSection);
 }
+let puppetPlacement=null;
+function appendPuppetControls(panel,item,editable){
+  const settings={...puppetDefaults,...item?.puppet};
+  if(puppetPlacement?.item!==item)puppetPlacement=null;
+  const box=document.createElement('fieldset');
+  const legend=document.createElement('legend');
+  legend.textContent='Puppet';
+  box.append(legend);
+  panel.append(box);
+  function update(changes){
+    item.puppet={...settings,...item.puppet,...changes};
+    applyAtTime();
+    scheduleSave();
+  }
+  function field(name,control){
+    const label=document.createElement('label');
+    label.className='scalar';
+    label.append(name,control);
+    box.append(label);
+  }
+  for(const [name,key] of [['Bật Puppet','enabled'],['Pingpong','pingpong']]){
+    const input=document.createElement('input');
+    input.type='checkbox';
+    input.checked=settings[key];
+    input.disabled=!editable;
+    input.onchange=()=>update({[key]:input.checked});
+    field(name,input);
+  }
+  const tools=document.createElement('div');
+  tools.className='actions puppet-tools';
+  for(const [kind,name] of [['anchor','Ghim neo'],['motion','Ghim chuyển động'],['undo','Bỏ ghim cuối']]){
+    const button=document.createElement('button');
+    button.type='button';
+    button.textContent=name;
+    button.disabled=!editable||(kind==='undo'&&!settings.pins.length);
+    if(kind!=='undo')button.setAttribute('aria-pressed',String(puppetPlacement?.kind===kind));
+    button.onclick=()=>{
+      if(kind==='undo')update({pins:item.puppet.pins.slice(0,-1)});
+      else puppetPlacement=puppetPlacement?.kind===kind?null:{item,kind};
+      renderLayerEffects();
+    };
+    tools.append(button);
+  }
+  box.append(tools);
+  const hint=document.createElement('p');
+  hint.textContent=puppetPlacement?'Bấm vào ảnh trong Active Camera hoặc Custom 3D View để đặt ghim.':
+    'Cần ít nhất một ghim mỗi loại. Ghim neo: '+settings.pins.filter(pin=>pin.kind==='anchor').length+' · Ghim chuyển động: '+settings.pins.filter(pin=>pin.kind==='motion').length;
+  box.append(hint);
+  const axis=document.createElement('select');
+  axis.add(new Option('Ngang','x'));
+  axis.add(new Option('Dọc','y'));
+  axis.value=settings.axis;
+  axis.disabled=!editable;
+  axis.onchange=()=>update({axis:axis.value});
+  field('Hướng',axis);
+  for(const [name,key,min,max,step] of [['Biên độ (%)','amount',0,30,1],['Tốc độ (×)','speed',.1,5,.1]]){
+    const input=document.createElement('input');
+    input.type='number';
+    Object.assign(input,{min,max,step,value:settings[key],disabled:!editable});
+    input.onchange=()=>{
+      input.value=clamp(Number(input.value)||0,min,max);
+      update({[key]:Number(input.value)});
+    };
+    field(name,input);
+  }
+}
+function placePuppetPin(hits){
+  if(!puppetPlacement||inspectorTab!=='effects'||$('#effect-layer').hidden)return false;
+  const {item,kind}=puppetPlacement;
+  if(item!==current()||item.locked)return false;
+  const hit=hits.find(hit=>hit.object.userData.id===item.id&&hit.uv&&opaqueAtIntersection(hit));
+  if(!hit)return true;
+  const pins=item.puppet?.pins||[];
+  if(pins.length>=24)return true;
+  item.puppet={...puppetDefaults,...item.puppet,enabled:true,pins:[...pins,{kind,u:hit.uv.x,v:hit.uv.y}]};
+  puppetPlacement=null;
+  applyAtTime();
+  scheduleSave();
+  renderLayerEffects();
+  return true;
+}
+function applyPuppet(layer,mesh,start){
+  const settings=layer.puppet;
+  const data=mesh.userData;
+  const active=settings?.enabled&&settings.pins.some(pin=>pin.kind==='motion')&&settings.pins.some(pin=>pin.kind==='anchor');
+  if(!active&&!data.puppetBase)return;
+  if(active&&!data.puppetBase){
+    const original=mesh.geometry;
+    mesh.geometry=new THREE.PlaneGeometry(original.parameters.width,original.parameters.height,40,40);
+    if(data.shadowMesh)data.shadowMesh.geometry=mesh.geometry;
+    original.dispose();
+    data.puppetBase=mesh.geometry.attributes.position.array.slice();
+    mesh.geometry.computeBoundingSphere();
+    mesh.geometry.boundingSphere.radius*=1.6;
+  }
+  const attribute=mesh.geometry.attributes.position;
+  if(!active){
+    if(data.puppetAmount!==0){
+      attribute.array.set(data.puppetBase);
+      attribute.needsUpdate=true;
+      data.puppetAmount=0;
+    }
+    return;
+  }
+  if(data.puppetPins!==settings.pins){
+    const uv=mesh.geometry.attributes.uv;
+    data.puppetWeights=Float32Array.from({length:uv.count},(_,index)=>puppetWeight(uv.getX(index),uv.getY(index),settings.pins));
+    data.puppetPins=settings.pins;
+    data.puppetAmount=undefined;
+  }
+  const axis=settings.axis==='y'?1:0;
+  const size=axis?mesh.geometry.parameters.height:mesh.geometry.parameters.width;
+  const amount=size*settings.amount/100*puppetProgress(time-start,settings.speed,settings.pingpong);
+  if(data.puppetAmount===amount&&data.puppetAxis===axis)return;
+  for(let i=0;i<attribute.count;i++){
+    attribute.array[3*i]=data.puppetBase[3*i]+(axis===0?amount*data.puppetWeights[i]:0);
+    attribute.array[3*i+1]=data.puppetBase[3*i+1]+(axis===1?amount*data.puppetWeights[i]:0);
+  }
+  attribute.needsUpdate=true;
+  data.puppetAmount=amount;
+  data.puppetAxis=axis;
+}
+
 function renderLayerEffects(){
   const panel=$('#effect-layer');
   panel.replaceChildren();
@@ -228,6 +352,7 @@ function renderLayerEffects(){
   parameters(motion,settings.type!=='none',[
     ['Cường độ (%)','strength','number',0,100],['Tốc độ (×)','speed','number',.1,5],
   ],settings,updateMotion);
+  appendPuppetControls(panel,item,editable&&!item.kind);
 }
 
 function syncLayerEffects(layer,mesh){
@@ -648,6 +773,7 @@ function applyLayerAtTime(layer,mesh){
     mesh.material.map.repeat.x=fullWidth?shaftWidth/fullWidth:0;
     mesh.visible=mesh.visible&&shaftWidth>0;
   }
+  applyPuppet(layer,mesh,bounds.start);
   syncLayerEffects(layer,mesh);
 }
 function applyAtTime(exporting=false){needsRender=true;if(project.audio){let range=clipBounds(project.audio,project.duration);audioElement.muted=time<range.start||time>=range.end;if(playing&&time>=range.start&&time<range.end&&Math.abs(audioElement.currentTime-(time-range.start))>.2)seekAudio()}const c=evaluateEntity(project.camera,time);active.position.fromArray(c.position);active.fov=c.fov;active.updateProjectionMatrix();const heading=project.camera.fixedHeading;if(heading)active.quaternion.fromArray(heading);else active.lookAt(...c.target);active.rotateX(THREE.MathUtils.degToRad(c.rotation[0]));active.rotateY(THREE.MathUtils.degToRad(c.rotation[1]));active.rotateZ(THREE.MathUtils.degToRad(c.rotation[2]));active.updateMatrixWorld();portraitCamera.position.copy(active.position);portraitCamera.quaternion.copy(active.quaternion);portraitCamera.fov=active.fov;portraitCamera.updateProjectionMatrix();portraitCamera.updateMatrixWorld();cameraHelper.update();cameraHandle.position.fromArray(c.position);cameraIcon.position.copy(active.position);cameraIcon.quaternion.copy(active.quaternion);for(const l of project.layers){let mesh=meshes.get(l.id);if(!mesh)continue;applyLayerAtTime(l,mesh)}if(selected!=='camera'){const m=meshes.get(selected);if(m&&((m.visible&&gizmo.object!==m)||(!m.visible&&gizmo.object===m)))attach()}if(!exporting){updatePlayhead();$('#time').value=time;$('#timeLabel').textContent=time.toFixed(2)+'s'}}
@@ -682,7 +808,7 @@ function attach(){needsRender=true;let m=selected==='camera'?cameraHandle:meshes
 // Use the visible pixel beneath a click, so transparent parts of PNGs do not block layers behind them.
 const layerRaycaster=new THREE.Raycaster(),alphaCanvases=new WeakMap();
 function opaqueAtIntersection(hit){if(!hit.uv)return true;const image=hit.object.material.map?.image;if(!image)return true;try{let context=alphaCanvases.get(image);if(!context){let canvas=document.createElement('canvas');canvas.width=image.naturalWidth||image.width;canvas.height=image.naturalHeight||image.height;context=canvas.getContext('2d',{willReadFrequently:true});context.drawImage(image,0,0);alphaCanvases.set(image,context)}let x=Math.min(context.canvas.width-1,Math.max(0,Math.floor(hit.uv.x*hit.object.material.map.repeat.x*context.canvas.width))),y=Math.min(context.canvas.height-1,Math.max(0,Math.floor((1-hit.uv.y)*context.canvas.height)));return context.getImageData(x,y,1,1).data[3]>10}catch{return true}}
-function enableImageSelection(canvas,getCamera,usesGizmo){let click=null;canvas.addEventListener('pointerdown',e=>{if(e.button!==0||!e.isPrimary)return;click={id:e.pointerId,x:e.clientX,y:e.clientY,gizmo:usesGizmo&&!!gizmo.axis}});canvas.addEventListener('pointercancel',()=>{click=null});canvas.addEventListener('pointerup',e=>{if(!click||click.id!==e.pointerId)return;let start=click;click=null;if(start.gizmo||gizmo.dragging||Math.hypot(e.clientX-start.x,e.clientY-start.y)>4)return;let rect=canvas.getBoundingClientRect();if(!rect.width||!rect.height)return;let pointer=new THREE.Vector2((e.clientX-rect.left)/rect.width*2-1,-((e.clientY-rect.top)/rect.height)*2+1);scene.updateMatrixWorld(true);const camera=getCamera();camera.updateMatrixWorld(true);layerRaycaster.setFromCamera(pointer,camera);let candidates=[...meshes.values()].flatMap(mesh=>[mesh,mesh.userData.arrowTip]).filter(mesh=>mesh?.visible);if(usesGizmo)candidates.push(...cameraIconParts);let hits=layerRaycaster.intersectObjects(candidates,false);hits.sort((a,b)=>Math.abs(a.distance-b.distance)>1e-7?a.distance-b.distance:project.layers.findIndex(l=>l.id===a.object.userData.id)-project.layers.findIndex(l=>l.id===b.object.userData.id));let cameraHit=usesGizmo?hits.find(hit=>hit.object.userData.cameraIcon):null;let hit=cameraHit||firstVisibleHit(hits,opaqueAtIntersection);if(hit)selectFromViewport(hit.object.userData.cameraIcon?'camera':hit.object.userData.id)})}
+function enableImageSelection(canvas,getCamera,usesGizmo){let click=null;canvas.addEventListener('pointerdown',e=>{if(e.button!==0||!e.isPrimary)return;click={id:e.pointerId,x:e.clientX,y:e.clientY,gizmo:usesGizmo&&!!gizmo.axis}});canvas.addEventListener('pointercancel',()=>{click=null});canvas.addEventListener('pointerup',e=>{if(!click||click.id!==e.pointerId)return;let start=click;click=null;if((!puppetPlacement&&(start.gizmo||gizmo.dragging))||Math.hypot(e.clientX-start.x,e.clientY-start.y)>4)return;let rect=canvas.getBoundingClientRect();if(!rect.width||!rect.height)return;let pointer=new THREE.Vector2((e.clientX-rect.left)/rect.width*2-1,-((e.clientY-rect.top)/rect.height)*2+1);scene.updateMatrixWorld(true);const camera=getCamera();camera.updateMatrixWorld(true);layerRaycaster.setFromCamera(pointer,camera);let candidates=[...meshes.values()].flatMap(mesh=>[mesh,mesh.userData.arrowTip]).filter(mesh=>mesh?.visible);if(usesGizmo)candidates.push(...cameraIconParts);let hits=layerRaycaster.intersectObjects(candidates,false);hits.sort((a,b)=>Math.abs(a.distance-b.distance)>1e-7?a.distance-b.distance:project.layers.findIndex(l=>l.id===a.object.userData.id)-project.layers.findIndex(l=>l.id===b.object.userData.id));if(placePuppetPin(hits))return;let cameraHit=usesGizmo?hits.find(hit=>hit.object.userData.cameraIcon):null;let hit=cameraHit||firstVisibleHit(hits,opaqueAtIntersection);if(hit)selectFromViewport(hit.object.userData.cameraIcon?'camera':hit.object.userData.id)})}
 function selectFromViewport(id){if(id!=='camera'){for(const group of project.groups||[])if(group.layerIds?.includes(id))group.collapsed=false}select(id);if(id!=='camera'){selectedClips.add(id);renderTracks();let bar=[...document.querySelectorAll('.timeline .clip-bar')].find(el=>el.dataset.layerId===id);bar?.closest('.track')?.scrollIntoView({block:'nearest',inline:'nearest'})}}
 enableImageSelection(renderer.domElement,()=>custom,true);
 enableImageSelection(previewRenderer.domElement,()=>project.aspect==='portrait'?portraitCamera:active,false);

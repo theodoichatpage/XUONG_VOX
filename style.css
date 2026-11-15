@@ -279,3 +279,6 @@ header .project-picker #projectList{min-width:108px;max-width:170px}
 #effect-layer :disabled{opacity:.52}
 .effect-choice-icon.shake,.effect-choice-icon.pendulum{transform:rotate(-12deg);border-radius:2px}
 .effect-choice-icon.pendulum{transform:rotate(15deg);border-radius:0 0 6px 6px}
+
+#effect-layer .puppet-tools{display:flex;flex-wrap:wrap;gap:4px}
+#effect-layer .puppet-tools button[aria-pressed="true"]{background:#d4f733;color:#101309}
