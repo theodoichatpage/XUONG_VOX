@@ -1,4 +1,4 @@
-import {puppetDefaults,puppetProgress,puppetWeight} from './puppet.js';
+import {puppetDefaults,puppetInfluences,puppetPinOffset} from './puppet.js';
 import {motionDefaults,layerMotionAt} from './layer-motion.js';
 import {effectDefaults,paintLayerEffects,paintLayerShadow} from './layer-effects.js';
 import {historyLineLayout} from './history-line.js';
@@ -138,8 +138,11 @@ function updatePuppetMarkers(){
   if(!pins.length)return false;
   mesh.updateMatrixWorld(true);
   const {width,height}=mesh.geometry.parameters;
+  let motionNumber=0;
   for(const [index,pin] of pins.entries()){
-    let material=puppetMarkerMaterials[pin.kind];
+    const number=pin.kind==='motion'?++motionNumber:0;
+    const key=number||'anchor';
+    let material=puppetMarkerMaterials[key];
     if(!material){
       const canvas=document.createElement('canvas');
       canvas.width=canvas.height=64;
@@ -148,7 +151,14 @@ function updatePuppetMarkers(){
       ctx.fillStyle=pin.kind==='anchor'?'#26bde2':'#ffca46';
       ctx.fill();
       ctx.strokeStyle='#111';ctx.lineWidth=6;ctx.stroke();
-      material=puppetMarkerMaterials[pin.kind]=new THREE.SpriteMaterial({
+      if(number){
+        ctx.font='bold 28px sans-serif';
+        ctx.textAlign='center';
+        ctx.textBaseline='middle';
+        ctx.fillStyle='#111';
+        ctx.fillText(String(number),32,33);
+      }
+      material=puppetMarkerMaterials[key]=new THREE.SpriteMaterial({
         map:new THREE.CanvasTexture(canvas),depthTest:false,depthWrite:false,sizeAttenuation:false,
       });
     }
@@ -160,20 +170,19 @@ function updatePuppetMarkers(){
     }
     marker.material=material;
     marker.position.set((pin.u-.5)*width,(pin.v-.5)*height,0);
-    if(pin.kind==='motion'&&mesh.userData.puppetAmount){
-      marker.position.setComponent(mesh.userData.puppetAxis,
-        marker.position.getComponent(mesh.userData.puppetAxis)+mesh.userData.puppetAmount);
-    }
+    const offset=mesh.userData.puppetOffsets?.[index];
+    if(offset){marker.position.x+=offset[0];marker.position.y+=offset[1]}
     mesh.localToWorld(marker.position);
     marker.scale.set(.05,.05,1);
   }
   return true;
 }
 
-let puppetPlacement=null;
+let puppetPlacement=null,puppetPinSelection=null;
 function appendPuppetControls(panel,item,editable){
   const settings={...puppetDefaults,...item?.puppet};
   if(puppetPlacement?.item!==item)puppetPlacement=null;
+  if(puppetPinSelection?.item!==item)puppetPinSelection=null;
   const box=document.createElement('fieldset');
   const legend=document.createElement('legend');
   legend.textContent='Puppet';
@@ -221,20 +230,42 @@ function appendPuppetControls(panel,item,editable){
   hint.textContent=puppetPlacement?'Bấm vào ảnh trong Active Camera hoặc Custom 3D View để đặt ghim.':
     'Ghim neo (xanh): '+settings.pins.filter(pin=>pin.kind==='anchor').length+' · Ghim chuyển động (vàng): '+settings.pins.filter(pin=>pin.kind==='motion').length+'. '+(settings.pins.some(pin=>pin.kind==='anchor')&&settings.pins.some(pin=>pin.kind==='motion')?'Bấm Phát hoặc kéo đầu phát để xem.':'Đặt ít nhất một ghim mỗi loại.');
   box.append(hint);
+  const motionPins=settings.pins.map((pin,index)=>({pin,index})).filter(entry=>entry.pin.kind==='motion');
+  const picker=document.createElement('select');
+  picker.add(new Option('Mặc định của layer',''));
+  motionPins.forEach(({index},i)=>picker.add(new Option('Ghim chuyển động '+(i+1),String(index))));
+  const pinIndex=puppetPinSelection?.item===item?puppetPinSelection.index:null;
+  const pin=motionPins.find(entry=>entry.index===pinIndex)?.pin;
+  picker.value=pin?String(pinIndex):'';
+  picker.disabled=!editable||!motionPins.length;
+  picker.onchange=()=>{
+    puppetPinSelection=picker.value===''?null:{item,index:Number(picker.value)};
+    renderLayerEffects();
+    $('#puppetPinPicker').focus();
+  };
+  picker.id='puppetPinPicker';
+  field('Chỉnh thông số',picker);
+  const values={...settings,...pin};
+  const updateMotion=changes=>{
+    if(!pin){update(changes);return}
+    update({pins:item.puppet.pins.map((entry,index)=>index===pinIndex?{...entry,...changes}:entry)});
+  };
   const axis=document.createElement('select');
   axis.add(new Option('Ngang','x'));
   axis.add(new Option('Dọc','y'));
-  axis.value=settings.axis;
+  axis.value=values.axis;
   axis.disabled=!editable;
-  axis.onchange=()=>update({axis:axis.value});
+  axis.onchange=()=>updateMotion({axis:axis.value});
   field('Hướng',axis);
-  for(const [name,key,min,max,step] of [['Biên độ (%)','amount',0,30,1],['Tốc độ (×)','speed',.1,5,.1]]){
+  const fields=[['Biên độ (%)','amount',0,30,1],['Tốc độ (×)','speed',.1,5,.1]];
+  if(pin)fields.push(['Độ trễ (giây)','delay',0,10,.05]);
+  for(const [name,key,min,max,step] of fields){
     const input=document.createElement('input');
     input.type='number';
-    Object.assign(input,{min,max,step,value:settings[key],disabled:!editable});
+    Object.assign(input,{min,max,step,value:values[key]??0,disabled:!editable});
     input.onchange=()=>{
       input.value=clamp(Number(input.value)||0,min,max);
-      update({[key]:Number(input.value)});
+      updateMotion({[key]:Number(input.value)});
     };
     field(name,input);
   }
@@ -248,6 +279,7 @@ function placePuppetPin(hits){
   const pins=item.puppet?.pins||[];
   if(pins.length>=24)return true;
   item.puppet={...puppetDefaults,...item.puppet,enabled:true,pins:[...pins,{kind,u:hit.uv.x,v:hit.uv.y}]};
+  if(kind==='motion')puppetPinSelection={item,index:pins.length};
   puppetPlacement=null;
   applyAtTime();
   scheduleSave();
@@ -270,30 +302,36 @@ function applyPuppet(layer,mesh,start){
   }
   const attribute=mesh.geometry.attributes.position;
   if(!active){
-    if(data.puppetAmount!==0){
+    if(data.puppetOffsets){
       attribute.array.set(data.puppetBase);
       attribute.needsUpdate=true;
-      data.puppetAmount=0;
+      data.puppetOffsets=null;
     }
     return;
   }
   if(data.puppetPins!==settings.pins){
     const uv=mesh.geometry.attributes.uv;
-    data.puppetWeights=Float32Array.from({length:uv.count},(_,index)=>puppetWeight(uv.getX(index),uv.getY(index),settings.pins));
+    data.puppetWeights=Array.from({length:uv.count},(_,index)=>
+      puppetInfluences(uv.getX(index),uv.getY(index),settings.pins));
     data.puppetPins=settings.pins;
-    data.puppetAmount=undefined;
+    data.puppetOffsets=null;
   }
-  const axis=settings.axis==='y'?1:0;
-  const size=axis?mesh.geometry.parameters.height:mesh.geometry.parameters.width;
-  const amount=size*settings.amount/100*puppetProgress(time-start,settings.speed,settings.pingpong);
-  if(data.puppetAmount===amount&&data.puppetAxis===axis)return;
+  const {width,height}=mesh.geometry.parameters;
+  const offsets=settings.pins.map(pin=>puppetPinOffset(pin,settings,time-start,width,height));
+  if(data.puppetOffsets?.length===offsets.length&&offsets.every(([x,y],i)=>
+    x===data.puppetOffsets[i][0]&&y===data.puppetOffsets[i][1]))return;
   for(let i=0;i<attribute.count;i++){
-    attribute.array[3*i]=data.puppetBase[3*i]+(axis===0?amount*data.puppetWeights[i]:0);
-    attribute.array[3*i+1]=data.puppetBase[3*i+1]+(axis===1?amount*data.puppetWeights[i]:0);
+    let x=data.puppetBase[3*i],y=data.puppetBase[3*i+1];
+    for(let j=0;j<offsets.length;j++){
+      const weight=data.puppetWeights[i][j];
+      x+=offsets[j][0]*weight;
+      y+=offsets[j][1]*weight;
+    }
+    attribute.array[3*i]=x;
+    attribute.array[3*i+1]=y;
   }
   attribute.needsUpdate=true;
-  data.puppetAmount=amount;
-  data.puppetAxis=axis;
+  data.puppetOffsets=offsets;
 }
 
 function renderLayerEffects(){
