@@ -280,5 +280,9 @@ header .project-picker #projectList{min-width:108px;max-width:170px}
 .effect-choice-icon.shake,.effect-choice-icon.pendulum{transform:rotate(-12deg);border-radius:2px}
 .effect-choice-icon.pendulum{transform:rotate(15deg);border-radius:0 0 6px 6px}
 
-#effect-layer .puppet-tools{display:flex;flex-wrap:wrap;gap:4px}
-#effect-layer .puppet-tools button[aria-pressed="true"]{background:#d4f733;color:#101309}
+#transitionPuppet .puppet-tools{display:flex;flex-wrap:wrap;gap:4px}
+#transitionPuppet .puppet-tools button[aria-pressed="true"]{background:#d4f733;color:#101309}
+
+#transitionPuppet fieldset{min-width:0;border:1px solid #303237;border-radius:5px;margin:8px 0;padding:4px 8px}
+#transitionPuppet input[type=number]{width:64px}
+#app #transitionPuppet input[type=checkbox]{width:13px;height:13px;min-height:0;margin:0}
