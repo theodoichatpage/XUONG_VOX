@@ -1,3 +1,4 @@
+import {motionDefaults,layerMotionAt} from './layer-motion.js';
 import {effectDefaults,paintLayerEffects,paintLayerShadow} from './layer-effects.js';
 import {historyLineLayout} from './history-line.js';
 import {shapeCanvas,shapeNames,popScale} from './shapes.js';
@@ -148,7 +149,7 @@ function renderLayerEffects(){
     return box;
   }
 
-  function choices(parent,options){
+  function choices(parent,options,onChange=update){
     const row=document.createElement('div');
     row.className='layer-effect-choices';
     for(const {name,icon,active,changes} of options){
@@ -162,29 +163,30 @@ function renderLayerEffects(){
       if(icon==='none')preview.textContent='⊘';
       button.append(preview,name);
       button.onclick=()=>{
-        update(changes,true);
-        panel.querySelectorAll('[aria-pressed="true"]')[parent===mask?0:1]?.focus();
+        const sectionIndex=[...panel.querySelectorAll('fieldset')].indexOf(parent);
+        onChange(changes,true);
+        panel.querySelectorAll('fieldset')[sectionIndex]?.querySelector('[aria-pressed="true"]')?.focus();
       };
       row.append(button);
     }
     parent.append(row);
   }
 
-  function parameters(parent,enabled,fields){
+  function parameters(parent,enabled,fields,settings=values,onChange=update){
     for(const [label,key,kind,min,max] of fields){
       const row=document.createElement('label');
       row.className='scalar';
       const control=document.createElement('input');
       control.type=kind;
-      if(kind==='number'){control.min=min;control.max=max}
-      if(kind==='checkbox')control.checked=values[key];
-      else control.value=values[key];
+      if(kind==='number'){control.min=min;control.max=max;control.step=key==='speed'?'0.1':'1'}
+      if(kind==='checkbox')control.checked=settings[key];
+      else control.value=settings[key];
       control.disabled=!editable||!enabled;
       control.onchange=()=>{
         const value=kind==='checkbox'?control.checked:kind==='number'
           ?clamp(Number(control.value)||0,min,max):control.value;
         if(kind==='number')control.value=value;
-        update({[key]:value});
+        onChange({[key]:value});
       };
       row.append(label,control);
       parent.append(row);
@@ -211,6 +213,21 @@ function renderLayerEffects(){
     ['Độ mờ','blur','number',0,40],['Khoảng cách','distance','number',0,80],
     ['Góc (°)','angle','number',0,360],
   ]);
+
+  const motion=section('Chuyển động');
+  const settings={...motionDefaults,...(supported?item.motion:null)};
+  function updateMotion(changes,refresh=false){
+    item.motion={...settings,...item.motion,...changes};
+    applyAtTime();
+    scheduleSave();
+    if(refresh)renderLayerEffects();
+  }
+  choices(motion,[
+    ['none','Tắt','none'],['shake','Rung nhẹ','shake'],['pendulum','Play Pendulum','pendulum'],
+  ].map(([type,name,icon])=>({name,icon,active:settings.type===type,changes:{type}})),updateMotion);
+  parameters(motion,settings.type!=='none',[
+    ['Cường độ (%)','strength','number',0,100],['Tốc độ (×)','speed','number',.1,5],
+  ],settings,updateMotion);
 }
 
 function syncLayerEffects(layer,mesh){
@@ -594,6 +611,13 @@ function applyLayerAtTime(layer,mesh){
     updateTextMesh(layer,fx);
   }
   const bounds=clipBounds(layer,project.duration);
+  if(layer.motion?.type&&layer.motion.type!=='none'){
+    const motion=layerMotionAt(layer.motion,time-bounds.start);
+    const dx=motion.x*mesh.geometry.parameters.width*Math.abs(mesh.scale.x);
+    const dy=motion.y*mesh.geometry.parameters.height*Math.abs(mesh.scale.y);
+    mesh.position.add(new THREE.Vector3(dx,dy,0).applyQuaternion(mesh.quaternion));
+    mesh.rotateZ(THREE.MathUtils.degToRad(motion.rotation));
+  }
   if(layer.popIn&&bounds.end>bounds.start){
     const scale=popScale(time-bounds.start,Math.min(.3,bounds.end-bounds.start));
     mesh.scale.x*=scale;

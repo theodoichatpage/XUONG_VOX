@@ -277,3 +277,5 @@ header .project-picker #projectList{min-width:108px;max-width:170px}
 .effect-choice-icon.shadow{box-shadow:3px 3px 2px #000;background:#717783}
 #app #effect-layer input[type=checkbox]{width:13px;height:13px;min-height:0;margin:0}
 #effect-layer :disabled{opacity:.52}
+.effect-choice-icon.shake,.effect-choice-icon.pendulum{transform:rotate(-12deg);border-radius:2px}
+.effect-choice-icon.pendulum{transform:rotate(15deg);border-radius:0 0 6px 6px}
