@@ -95,7 +95,7 @@ let lastLayerClick=null;
 function layerNameClick(id,source,e){selectedAudio=false;if(e&&(e.ctrlKey||e.metaKey||e.shiftKey)){lastLayerClick=null;if(!selectedClips.size&&selected!=='camera')selectedClips.add(selected);if(selectedClips.has(id))selectedClips.delete(id);else selectedClips.add(id);selected=id;selectedKey=null;selectedKeys.clear();renderLayerList();renderTracks();showFields();attach();return}let now=performance.now();if(lastLayerClick&&lastLayerClick.id===id&&lastLayerClick.source===source&&now-lastLayerClick.time<450){lastLayerClick=null;beginLayerRename(id,source);return}lastLayerClick={id,source,time:now};select(id)}
 function beginLayerRename(id,source){let layer=project.layers.find(l=>l.id===id);if(!layer)return;let selector=source==='sidebar'?'.layer-name':'.track-label';let host=[...document.querySelectorAll(selector)].find(el=>el.dataset.layerId===id);if(!host)return;let input=document.createElement('input');input.type='text';input.className='layer-rename';input.value=layer.name;input.setAttribute('aria-label','Tên layer');let cancelled=false,finished=false;function finish(){if(finished)return;finished=true;let name=input.value.trim();if(!cancelled&&name&&name!==layer.name){layer.name=name;scheduleSave()}renderLayerList();renderTracks();showFields()}input.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();input.blur()}else if(e.key==='Escape'){e.preventDefault();cancelled=true;input.blur()}e.stopPropagation()});input.addEventListener('blur',finish);host.replaceWith(input);input.focus();input.select()}
 let inspectorSelection=null,inspectorTab='properties';
-function setInspectorTab(tab){inspectorTab=tab;$('#propertiesPanel').hidden=tab!=='properties';$('#textPanel').hidden=tab!=='text';$('#effectsPanel').hidden=tab!=='effects';$('#effectsTab').classList.toggle('active',tab==='effects');$('#propertiesTab').classList.toggle('active',tab==='properties');$('#textTab').classList.toggle('active',tab==='text');if(tab==='text')renderTextPanel();if(tab==='effects')renderLayerEffects()}
+function setInspectorTab(tab){needsRender=true;if(tab!=='effects')puppetPlacement=null;inspectorTab=tab;$('#propertiesPanel').hidden=tab!=='properties';$('#textPanel').hidden=tab!=='text';$('#effectsPanel').hidden=tab!=='effects';$('#effectsTab').classList.toggle('active',tab==='effects');$('#propertiesTab').classList.toggle('active',tab==='properties');$('#textTab').classList.toggle('active',tab==='text');if(tab==='text')renderTextPanel();if(tab==='effects')renderLayerEffects()}
 $('#settings').onclick=()=>$('#helpDialog').showModal();$('#propertiesTab').onclick=()=>setInspectorTab('properties');$('#effectsTab').onclick=()=>setInspectorTab('effects');
 $('#timelineEffects').onclick=()=>setInspectorTab('effects');
 $('#timelineSplit').onclick=()=>trimSelectedClips();
@@ -113,6 +113,8 @@ $('#graphicsTab').onclick=()=>showMediaTab(true);
 
 $('#textTab').onclick=()=>setInspectorTab('text');
 function showEffectSection(section){
+  needsRender=true;
+  if(section!=='layer')puppetPlacement=null;
   for(const button of document.querySelectorAll('[data-effect-section]')){
     const name=button.dataset.effectSection;
     button.setAttribute('aria-pressed',String(name===section));
@@ -123,6 +125,52 @@ function showEffectSection(section){
 for(const button of document.querySelectorAll('[data-effect-section]')){
   button.onclick=()=>showEffectSection(button.dataset.effectSection);
 }
+const puppetMarkers=new THREE.Group();
+puppetMarkers.visible=false;
+scene.add(puppetMarkers);
+const puppetMarkerMaterials={};
+function updatePuppetMarkers(){
+  const layer=current();
+  const mesh=meshes.get(layer?.id);
+  const pins=inspectorTab==='effects'&&!$('#effect-layer').hidden&&mesh?.visible
+    ?layer.puppet?.pins||[]:[];
+  while(puppetMarkers.children.length>pins.length)puppetMarkers.children.at(-1).removeFromParent();
+  if(!pins.length)return false;
+  mesh.updateMatrixWorld(true);
+  const {width,height}=mesh.geometry.parameters;
+  const size=Math.min(width*Math.abs(mesh.scale.x),height*Math.abs(mesh.scale.y))*.032;
+  for(const [index,pin] of pins.entries()){
+    let material=puppetMarkerMaterials[pin.kind];
+    if(!material){
+      const canvas=document.createElement('canvas');
+      canvas.width=canvas.height=64;
+      const ctx=canvas.getContext('2d');
+      ctx.beginPath();ctx.arc(32,32,24,0,Math.PI*2);
+      ctx.fillStyle=pin.kind==='anchor'?'#26bde2':'#ffca46';
+      ctx.fill();
+      ctx.strokeStyle='#111';ctx.lineWidth=6;ctx.stroke();
+      material=puppetMarkerMaterials[pin.kind]=new THREE.SpriteMaterial({
+        map:new THREE.CanvasTexture(canvas),depthTest:false,depthWrite:false,
+      });
+    }
+    let marker=puppetMarkers.children[index];
+    if(!marker){
+      marker=new THREE.Sprite(material);
+      marker.renderOrder=10000;
+      puppetMarkers.add(marker);
+    }
+    marker.material=material;
+    marker.position.set((pin.u-.5)*width,(pin.v-.5)*height,0);
+    if(pin.kind==='motion'&&mesh.userData.puppetAmount){
+      marker.position.setComponent(mesh.userData.puppetAxis,
+        marker.position.getComponent(mesh.userData.puppetAxis)+mesh.userData.puppetAmount);
+    }
+    mesh.localToWorld(marker.position);
+    marker.scale.set(size,size,1);
+  }
+  return true;
+}
+
 let puppetPlacement=null;
 function appendPuppetControls(panel,item,editable){
   const settings={...puppetDefaults,...item?.puppet};
@@ -130,6 +178,7 @@ function appendPuppetControls(panel,item,editable){
   const box=document.createElement('fieldset');
   const legend=document.createElement('legend');
   legend.textContent='Puppet';
+  needsRender=true;
   box.append(legend);
   panel.append(box);
   function update(changes){
@@ -168,8 +217,10 @@ function appendPuppetControls(panel,item,editable){
   }
   box.append(tools);
   const hint=document.createElement('p');
+  hint.setAttribute('role','status');
+  hint.id='puppetHint';
   hint.textContent=puppetPlacement?'Bấm vào ảnh trong Active Camera hoặc Custom 3D View để đặt ghim.':
-    'Cần ít nhất một ghim mỗi loại. Ghim neo: '+settings.pins.filter(pin=>pin.kind==='anchor').length+' · Ghim chuyển động: '+settings.pins.filter(pin=>pin.kind==='motion').length;
+    'Ghim neo (xanh): '+settings.pins.filter(pin=>pin.kind==='anchor').length+' · Ghim chuyển động (vàng): '+settings.pins.filter(pin=>pin.kind==='motion').length+'. '+(settings.pins.some(pin=>pin.kind==='anchor')&&settings.pins.some(pin=>pin.kind==='motion')?'Bấm Phát hoặc kéo đầu phát để xem.':'Đặt ít nhất một ghim mỗi loại.');
   box.append(hint);
   const axis=document.createElement('select');
   axis.add(new Option('Ngang','x'));
@@ -194,7 +245,7 @@ function placePuppetPin(hits){
   const {item,kind}=puppetPlacement;
   if(item!==current()||item.locked)return false;
   const hit=hits.find(hit=>hit.object.userData.id===item.id&&hit.uv&&opaqueAtIntersection(hit));
-  if(!hit)return true;
+  if(!hit){$('#puppetHint').textContent='Bấm vào phần nhìn thấy của layer ảnh đã chọn.';return true}
   const pins=item.puppet?.pins||[];
   if(pins.length>=24)return true;
   item.puppet={...puppetDefaults,...item.puppet,enabled:true,pins:[...pins,{kind,u:hit.uv.x,v:hit.uv.y}]};
@@ -1345,4 +1396,4 @@ for(const [id,key,axis,sign] of [
 applyWorkspaceSizes();
 window.addEventListener('resize',applyWorkspaceSizes);
 document.addEventListener('keydown',e=>{if(e.code!=='Space'||e.ctrlKey||e.metaKey||e.altKey||e.repeat||busy)return;const t=e.target;if(t instanceof HTMLElement&&(t.isContentEditable||t.tagName==='TEXTAREA'||t.tagName==='SELECT'||t.tagName==='INPUT'&&t.type!=='range'))return;e.preventDefault();$('#play').click()});
-let last=performance.now(),lastFieldsRefresh=0;$('#play').onclick=async()=>{if(playing){playAllScenes=false;playing=false;audioElement.pause();$('#play').textContent='▶ Phát';return}if(time>=project.duration)time=0;playing=true;$('#play').textContent='❚❚ Dừng';last=performance.now();if(loadedAudioSrc){seekAudio();try{await audioElement.play()}catch(e){playAllScenes=false;playing=false;$('#play').textContent='▶ Phát';alert('Không phát được âm thanh: '+e.message)}}};function resize(){needsRender=true;let w=$('#customView').clientWidth,h=$('#customView').clientHeight;if(w&&h){renderer.setSize(w,h,false);custom.aspect=w/h;custom.updateProjectionMatrix()}let frame=previewRenderer.domElement.parentElement,fw=frame.clientWidth,fh=frame.clientHeight;if(fw&&fh)previewRenderer.setSize(fw,fh,false);active.aspect=16/9;active.updateProjectionMatrix();cameraHelper.update()}const viewSizeObserver=new ResizeObserver(resize);viewSizeObserver.observe($('#cameraView'));viewSizeObserver.observe($('#customView'));function tick(now){requestAnimationFrame(tick);if(playing&&!busy){time=time+(now-last)/1000;if(time>=project.duration){time=project.duration;playing=false;audioElement.pause();$('#play').textContent='▶ Phát';if(playAllScenes){let i=project.scenes.findIndex(x=>x.id===project.activeSceneId),next=project.scenes[i+1];if(next)changeScene(next.id).then(()=>{if(playAllScenes)$('#play').click()}).catch(e=>{playAllScenes=false;alert('Không phát được cảnh tiếp theo: '+e.message)});else playAllScenes=false}}applyAtTime();if(now-lastFieldsRefresh>=200){showFields();lastFieldsRefresh=now}}last=now;orbit.update();if(busy||!needsRender)return;needsRender=false;grid.visible=false;gizmo.getHelper().visible=false;cameraHelper.visible=false;cameraIcon.visible=false;previewRenderer.render(scene,project.aspect==='portrait'?portraitCamera:active);grid.visible=true;gizmo.getHelper().visible=true;cameraHelper.visible=true;cameraIcon.visible=true;renderer.render(scene,custom)}renderTicks();rebuild();resize();requestAnimationFrame(tick);window.__vox={get project(){return project},get time(){return time}};
+let last=performance.now(),lastFieldsRefresh=0;$('#play').onclick=async()=>{if(playing){playAllScenes=false;playing=false;audioElement.pause();$('#play').textContent='▶ Phát';return}if(time>=project.duration)time=0;playing=true;$('#play').textContent='❚❚ Dừng';last=performance.now();if(loadedAudioSrc){seekAudio();try{await audioElement.play()}catch(e){playAllScenes=false;playing=false;$('#play').textContent='▶ Phát';alert('Không phát được âm thanh: '+e.message)}}};function resize(){needsRender=true;let w=$('#customView').clientWidth,h=$('#customView').clientHeight;if(w&&h){renderer.setSize(w,h,false);custom.aspect=w/h;custom.updateProjectionMatrix()}let frame=previewRenderer.domElement.parentElement,fw=frame.clientWidth,fh=frame.clientHeight;if(fw&&fh)previewRenderer.setSize(fw,fh,false);active.aspect=16/9;active.updateProjectionMatrix();cameraHelper.update()}const viewSizeObserver=new ResizeObserver(resize);viewSizeObserver.observe($('#cameraView'));viewSizeObserver.observe($('#customView'));function tick(now){requestAnimationFrame(tick);if(playing&&!busy){time=time+(now-last)/1000;if(time>=project.duration){time=project.duration;playing=false;audioElement.pause();$('#play').textContent='▶ Phát';if(playAllScenes){let i=project.scenes.findIndex(x=>x.id===project.activeSceneId),next=project.scenes[i+1];if(next)changeScene(next.id).then(()=>{if(playAllScenes)$('#play').click()}).catch(e=>{playAllScenes=false;alert('Không phát được cảnh tiếp theo: '+e.message)});else playAllScenes=false}}applyAtTime();if(now-lastFieldsRefresh>=200){showFields();lastFieldsRefresh=now}}last=now;orbit.update();if(busy||!needsRender)return;needsRender=false;puppetMarkers.visible=updatePuppetMarkers();grid.visible=false;gizmo.getHelper().visible=false;cameraHelper.visible=false;cameraIcon.visible=false;previewRenderer.render(scene,project.aspect==='portrait'?portraitCamera:active);grid.visible=true;gizmo.getHelper().visible=true;cameraHelper.visible=true;cameraIcon.visible=true;renderer.render(scene,custom);puppetMarkers.visible=false}renderTicks();rebuild();resize();requestAnimationFrame(tick);window.__vox={get project(){return project},get time(){return time}};
