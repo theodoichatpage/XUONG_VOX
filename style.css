@@ -287,6 +287,8 @@ header .project-picker #projectList{min-width:108px;max-width:170px}
 #transitionPuppet input[type=number]{width:64px}
 #app #transitionPuppet input[type=checkbox]{width:13px;height:13px;min-height:0;margin:0}
 
-.timeline .group-track .rail:has(>.history-group-clip){background:#49394f}
-.timeline .history-group-clip{--clip-color:#8a609b;top:1px;bottom:1px;cursor:grab;touch-action:none}
-.timeline .history-group-clip:active{cursor:grabbing}
+.timeline .group-track .rail:has(>.template-group-clip){background:#49394f}
+.timeline .template-group-clip{--clip-color:#8a609b;top:1px;bottom:1px;cursor:grab;touch-action:none}
+.timeline .template-group-clip:active{cursor:grabbing}
+
+.copy-all-actions[hidden]{display:none}

@@ -18,7 +18,7 @@ import {drawAnnotation,selectedTextRange} from './text-annotations.js';
 import {TEXT_DEFAULTS,textAnimation} from './text-effects.js';
 import {savePreset as updatePresetList,textPresetState} from './presets.js';
 import {repairAvcMetadata} from './avc.js';
-import {groupLayers,ungroupLayers,addSplitToGroup,removeMissingGroupMembers,reorderLayer} from './groups.js';
+import {groupLayers,ungroupLayers,addSplitToGroup,removeMissingGroupMembers,reorderLayer,isGraphicTemplate,scaleGraphicTemplate} from './groups.js';
 import {classifyFiles,projectFileName} from './files.js';
 import {attachAudio,inspectAudio,audioExportConfig,encodeAudioTrack,encodeAudioTimeline} from './audio.js';
 import {ProjectHistory} from './history.js';
@@ -936,7 +936,53 @@ function resetField(key){let defaults=selected==='camera'?initialCamera():layerD
 function resetButton(key,label){let b=document.createElement('button');b.type='button';b.className='reset-field';b.textContent='↺';b.title='Đặt lại '+label;b.setAttribute('aria-label',b.title);b.onclick=()=>resetField(key);return b}
 function propertyToggle(key,label){let item=current();normalizeEntity(item);let button=document.createElement('button');button.type='button';button.className='property-toggle'+(item.animated[key]?' enabled':'');button.textContent='◷';button.title=(item.animated[key]?'Tắt':'Bật')+' keyframe '+label;button.setAttribute('aria-label',button.title);button.setAttribute('aria-pressed',String(!!item.animated[key]));button.onclick=()=>{if(item.locked)return;let enabled=toggleProperty(item,key,time,$('#ease').value);selectedKeys.clear();selectedKey=null;renderTracks();applyAtTime();showFields();scheduleSave();message((enabled?'Đã bật':'Đã tắt')+' keyframe '+label)};return button}
 function fieldRow(label,key,v){let row=document.createElement('div');row.className='fields';row.append(propertyToggle(key,label));let title=document.createElement('span');title.textContent=label;row.append(title);v.forEach((x,i)=>{let input=document.createElement('input');input.type='number';input.step='0.1';input.value=Number(x.toFixed(2));let axis=key==='scale'&&i===2?'Đồng đều X/Y':['X','Y','Z'][i];input.title=label+' '+axis+' — kéo ngang để điều chỉnh, hoặc nhấp để nhập số';input.setAttribute('aria-label',label+' '+axis);let drag=null;input.addEventListener('pointerdown',e=>{if(e.button!==0)return;drag={id:e.pointerId,x:e.clientX,start:Number(input.value)||0,moved:false};history?.begin();input.setPointerCapture(e.pointerId)});input.addEventListener('pointermove',e=>{if(!drag||e.pointerId!==drag.id)return;let dx=e.clientX-drag.x;if(!drag.moved&&Math.abs(dx)<4)return;drag.moved=true;let sensitivity=key==='rotation'?.25:key==='scale'?.01:.05;let next=Math.round((drag.start+dx*sensitivity)*100)/100;if(key==='scale')next=Math.max(.01,next);input.value=next;mutateValue(v=>{if(key==='scale')v.scale=setScaleComponent(v.scale,i,next);else v[key][i]=next})});input.addEventListener('pointerup',e=>{if(!drag||e.pointerId!==drag.id)return;let moved=drag.moved;drag=null;history?.end();if(moved){e.preventDefault();input.blur()} });input.addEventListener('pointercancel',()=>{drag=null;history?.end()});input.onchange=()=>{let next=Number(input.value);if(!Number.isFinite(next))return;if(key==='scale')next=Math.max(.01,next);mutateValue(v=>{if(key==='scale')v.scale=setScaleComponent(v.scale,i,next);else v[key][i]=next});showFields()};row.append(input)});row.append(resetButton(key,label));return row}
-function showFields(){let item=current();if(!item)return;if(inspectorSelection!==selected){inspectorSelection=selected;setInspectorTab(inspectorTab==='effects'?'effects':item.kind==='text'?'text':'properties')}let v=selectedValue(),box=$('#fields');box.replaceChildren();$('#selectedTitle').textContent=selected==='camera'?'Camera':item.name;box.append(fieldRow('Position','position',v.position),fieldRow('Rotation','rotation',v.rotation));if(selected==='camera'){
+function selectedGraphicTemplate(){
+  if(selectedAudio||selectedClips.size<2||!selectedClips.has(selected))return null;
+  return (project.groups||[]).find(group=>isGraphicTemplate(group)&&
+    group.layerIds.length===selectedClips.size&&group.layerIds.every(id=>selectedClips.has(id)));
+}
+
+function showTemplateFields(group){
+  if(inspectorSelection!==group.id){
+    inspectorSelection=group.id;
+    setInspectorTab('properties');
+  }
+  $('#selectedTitle').textContent=group.name;
+  const row=document.createElement('label');
+  row.className='scalar property-scalar';
+  const label=document.createElement('span');
+  label.textContent='Scale cả nhóm (%)';
+  const input=document.createElement('input');
+  input.type='number';
+  input.min=1;
+  input.max=1000;
+  input.step=1;
+  input.value=group.scalePercent??100;
+  const layers=project.layers.filter(layer=>selectedClips.has(layer.id));
+  input.disabled=layers.some(layer=>layer.locked);
+  if(input.disabled)input.title='Mở khóa các layer trong nhóm để chỉnh Scale';
+  function resize(value){
+    const percent=clamp(value,1,1000);
+    if(scaleGraphicTemplate(group,layers,percent)){
+      applyAtTime();
+      scheduleSave();
+    }
+    input.value=group.scalePercent??100;
+  }
+  input.onchange=()=>resize(input.valueAsNumber);
+  const reset=document.createElement('button');
+  reset.type='button';
+  reset.className='reset-field';
+  reset.textContent='↺';
+  reset.title='Đặt lại Scale cả nhóm';
+  reset.setAttribute('aria-label',reset.title);
+  reset.disabled=input.disabled;
+  reset.onclick=()=>resize(100);
+  row.append(label,input,reset);
+  $('#fields').replaceChildren(row);
+}
+
+function showFields(){const group=selectedGraphicTemplate();$('.copy-all-actions').hidden=!!group;$('#cameraKey').hidden=!!group;if(group){showTemplateFields(group);return}let item=current();if(!item)return;if(inspectorSelection!==selected){inspectorSelection=selected;setInspectorTab(inspectorTab==='effects'?'effects':item.kind==='text'?'text':'properties')}let v=selectedValue(),box=$('#fields');box.replaceChildren();$('#selectedTitle').textContent=selected==='camera'?'Camera':item.name;box.append(fieldRow('Position','position',v.position),fieldRow('Rotation','rotation',v.rotation));if(selected==='camera'){
   const headingRow=document.createElement('label');
   headingRow.className='scalar';
   headingRow.textContent='Hướng nhìn';
@@ -958,7 +1004,7 @@ function showFields(){let item=current();if(!item)return;if(inspectorSelection!=
   box.prepend(headingRow);
   if(!item.fixedHeading)box.append(fieldRow('Target','target',v.target));
 }else box.append(fieldRow('Scale','scale',v.scale));const key=selected==='camera'?'fov':'opacity';let row=document.createElement('div');row.className='scalar property-scalar';row.append(propertyToggle(key,key==='fov'?'FOV':'Opacity'));let scalarLabel=document.createElement('span');scalarLabel.textContent=key==='fov'?'FOV (độ)':'Opacity (0–1)';row.append(scalarLabel);let input=document.createElement('input');input.type='number';input.min=key==='fov'?1:0;input.max=key==='fov'?160:1;input.step=key==='fov'?1:.05;input.value=v[key];input.onchange=()=>{mutateValue(v=>v[key]=clamp(Number(input.value),+input.min,+input.max));showFields()};row.append(input,resetButton(key,key==='fov'?'FOV':'Opacity'));box.append(row);if(selected!=='camera'){let colorRow=document.createElement('label');colorRow.className='scalar';colorRow.append(document.createTextNode('Màu thanh timeline'));let color=document.createElement('input');color.type='color';color.title='Đổi màu thanh layer';color.setAttribute('aria-label','Màu thanh timeline');color.value=layerColor(item);color.oninput=()=>{let bar=document.querySelector('.clip-bar[data-layer-id="'+CSS.escape(item.id)+'"]');if(bar)bar.style.setProperty('--clip-color',color.value)};color.onchange=()=>{item.color=color.value;renderTracks();scheduleSave()};colorRow.append(color);box.append(colorRow);if(item.shape)appendShapeFields(box,item,v);appendPopField(box,item)}}
-function attach(){needsRender=true;let m=selected==='camera'?cameraHandle:meshes.get(selected);if(m&&m.visible&&!(current()?.locked))gizmo.attach(m);else gizmo.detach()}function select(id){selectedAudio=false;selected=id;selectedKey=null;selectedKeys.clear();selectedClips.clear();renderLayerList();renderTracks();showFields();attach()}
+function attach(){needsRender=true;let m=selected==='camera'?cameraHandle:meshes.get(selected);if(m&&m.visible&&!(current()?.locked)&&!selectedGraphicTemplate())gizmo.attach(m);else gizmo.detach()}function select(id){selectedAudio=false;selected=id;selectedKey=null;selectedKeys.clear();selectedClips.clear();renderLayerList();renderTracks();showFields();attach()}
 // Use the visible pixel beneath a click, so transparent parts of PNGs do not block layers behind them.
 const layerRaycaster=new THREE.Raycaster(),alphaCanvases=new WeakMap();
 function opaqueAtIntersection(hit){if(!hit.uv)return true;const image=hit.object.material.map?.image;if(!image)return true;try{let context=alphaCanvases.get(image);if(!context){let canvas=document.createElement('canvas');canvas.width=image.naturalWidth||image.width;canvas.height=image.naturalHeight||image.height;context=canvas.getContext('2d',{willReadFrequently:true});context.drawImage(image,0,0);alphaCanvases.set(image,context)}let x=Math.min(context.canvas.width-1,Math.max(0,Math.floor(hit.uv.x*hit.object.material.map.repeat.x*context.canvas.width))),y=Math.min(context.canvas.height-1,Math.max(0,Math.floor((1-hit.uv.y)*context.canvas.height)));return context.getImageData(x,y,1,1).data[3]>10}catch{return true}}
@@ -1172,13 +1218,13 @@ function enableClipMove(bar,layer,rail,isAudio=false){
 }
 function addClipResizeHandle(bar,item,rail,edge,isAudio){let grip=document.createElement('div');grip.className='clip-handle '+edge;grip.setAttribute('role','slider');grip.setAttribute('aria-label',edge==='start'?'Kéo điểm bắt đầu':'Kéo điểm kết thúc các thanh đã chọn');grip.title=edge==='start'?'Kéo điểm bắt đầu':'Kéo điểm kết thúc các thanh đã chọn';let drag=null;grip.addEventListener('pointerdown',e=>{if(e.button!==0||e.altKey||item.locked)return;e.stopPropagation();e.preventDefault();let grouped=isAudio?selectedAudio:selectedClips.has(item.id);let items=grouped?project.layers.filter(l=>selectedClips.has(l.id)&&!l.locked):[item];if(grouped&&selectedAudio&&project.audio)items.push(project.audio);if(!items.includes(item))items.push(item);if(edge==='start')items=[item];let entries=items.map(x=>{let b=clipBounds(x,project.duration);const neighbors=laneNeighbors(project,x);const next=Math.min(project.duration,...neighbors.filter(n=>n.start>=b.end-1e-8).map(n=>n.start));const previous=Math.max(0,...neighbors.filter(n=>n.end<=b.start+1e-8).map(n=>n.end));return {item:x,start:b.start,end:b.end,previous,next,neighbors,maxEnd:x===project.audio?Math.min(project.duration,b.start+(Number(x.duration)||project.duration)):next}});drag={id:e.pointerId,x:e.clientX,width:rail.getBoundingClientRect().width,entries};grip.setPointerCapture(e.pointerId);history.begin()});grip.addEventListener('pointermove',e=>{if(!drag||e.pointerId!==drag.id||!drag.width)return;e.stopPropagation();let delta=Math.round((e.clientX-drag.x)/drag.width*project.duration*30)/30;if(edge==='end'){const stop=Math.min(...drag.entries.map(x=>x.maxEnd-x.end));if(Math.abs(stop-delta)<=magnetDistance(drag.width))delta=stop;resizeClipEnds(drag.entries,delta,project.duration);for(const x of drag.entries)x.item.clipEnd=exactClipEdge(x.item.clipEnd,x.neighbors,'start')}else{let x=drag.entries[0];if(Math.abs(x.start+delta-x.previous)<=magnetDistance(drag.width))delta=x.previous-x.start;x.item.clipStart=exactClipEdge(clamp(x.start+delta,x.previous,Math.max(x.previous,x.end-1/30)),x.neighbors,'end')}for(const x of drag.entries){let el=x.item===project.audio?document.querySelector('.audio-bar'):[...document.querySelectorAll('.clip-bar')].find(n=>n.dataset.layerId===x.item.id);if(el){let b=clipBounds(x.item,project.duration);el.style.left=(100*b.start/project.duration)+'%';el.style.width=(100*(b.end-b.start)/project.duration)+'%'}}applyAtTime();scheduleSave()});function finish(e){if(!drag||e.pointerId!==drag.id)return;e.stopPropagation();if(e.type==='pointercancel'){for(const x of drag.entries){x.item.clipStart=x.start;x.item.clipEnd=x.end}applyAtTime();scheduleSave()}drag=null;history.end();renderTracks()}grip.addEventListener('pointerup',finish);grip.addEventListener('pointercancel',finish);grip.addEventListener('click',e=>e.stopPropagation());bar.append(grip)}
 function makeClipBar(layer,rail){let bar=document.createElement('div');bar.className='clip-bar';bar.dataset.layerId=layer.id;const caption=document.createElement('span');caption.className='clip-caption';caption.textContent=layer.name;bar.append(caption);enableClipMove(bar,layer,rail);bar.classList.toggle('selected-clip',selectedClips.has(layer.id));bar.addEventListener('click',e=>{e.stopPropagation();if(e.altKey)return;if(!(e.ctrlKey||e.metaKey||e.shiftKey)){selectedAudio=false;selectedKeys.clear();selectedClips.clear()}if(selectedClips.has(layer.id)&&(e.ctrlKey||e.metaKey||e.shiftKey))selectedClips.delete(layer.id);else selectedClips.add(layer.id);selected=layer.id;selectedKey=null;renderLayerList();renderTracks();showFields();attach()});bar.style.setProperty('--clip-color',layerColor(layer));function position(){const {start,end}=clipBounds(layer,project.duration);bar.style.left=(start/project.duration*100)+'%';bar.style.width=((end-start)/project.duration*100)+'%';bar.title=layer.name+' · '+start.toFixed(2)+'s đến '+end.toFixed(2)+'s · Kéo để di chuyển hoặc chuyển hàng · Alt+kéo để sao chép clip'}position();for(const edge of ['start','end'])addClipResizeHandle(bar,layer,rail,edge,false);return bar}
-function addHistoryGroupClip(group,rail){
+function addTemplateGroupClip(group,rail,selectGroup){
   const ids=new Set(group.layerIds);
   const items=project.layers.filter(layer=>ids.has(layer.id));
   const bounds=items.map(item=>clipBounds(item,project.duration));
   if(!bounds.length)return;
   const bar=document.createElement('div');
-  bar.className='clip-bar history-group-clip';
+  bar.className='clip-bar template-group-clip';
   bar.title='Kéo thân để dời cả nhóm · Kéo hai mép vào trong để cắt ngắn';
   bar.setAttribute('aria-label','Thời lượng '+group.name);
   const caption=document.createElement('span');
@@ -1201,7 +1247,10 @@ function addHistoryGroupClip(group,rail){
   show(first,last);
   rail.append(bar);
   let drag=null;
-  bar.addEventListener('click',event=>event.stopPropagation());
+  bar.addEventListener('click',event=>{
+    event.stopPropagation();
+    selectGroup(event);
+  });
   bar.addEventListener('pointerdown',event=>{
     if(event.button!==0||event.altKey)return;
     event.preventDefault();
@@ -1253,7 +1302,7 @@ function addHistoryGroupClip(group,rail){
   bar.addEventListener('pointercancel',finish);
   bar.addEventListener('lostpointercapture',finish);
 }
-function makeGroupRow(group){let row=document.createElement('div');row.className='track group-track';let name=document.createElement('span');name.className='track-name';let toggle=document.createElement('button');toggle.className='group-toggle';toggle.textContent=group.collapsed?'▸':'▾';toggle.title=group.collapsed?'Mở nhóm':'Thu gọn nhóm';toggle.onclick=()=>{group.collapsed=!group.collapsed;renderTracks();scheduleSave()};let title=document.createElement('span');title.className='track-label';title.textContent='▣ '+group.name;title.title='Chọn các layer trong nhóm';title.onclick=e=>{selectedKeys.clear();if(!(e.ctrlKey||e.metaKey||e.shiftKey))selectedClips.clear();let members=group.layerIds.filter(id=>project.layers.some(l=>l.id===id)),remove=(e.ctrlKey||e.metaKey)&&members.every(id=>selectedClips.has(id));for(const id of members)if(remove)selectedClips.delete(id);else selectedClips.add(id);selected=[...selectedClips][0]||'camera';renderLayerList();renderTracks();showFields();attach();message('Đã chọn '+selectedClips.size+' layer trong '+group.name)};let ungroup=document.createElement('button');ungroup.className='ungroup';ungroup.textContent='×';ungroup.title='Tách nhóm';ungroup.setAttribute('aria-label','Tách '+group.name);ungroup.onclick=()=>{ungroupLayers(project,group.id);renderTracks();scheduleSave();message('Đã tách nhóm; Ctrl+Z để hoàn tác')};name.append(toggle,title,ungroup);const rail=createTrackRail();row.append(name,rail);if(group.historyLine||group.name==='Dòng lịch sử')addHistoryGroupClip(group,rail);return row}
+function makeGroupRow(group){let row=document.createElement('div');row.className='track group-track';let name=document.createElement('span');name.className='track-name';let toggle=document.createElement('button');toggle.className='group-toggle';toggle.textContent=group.collapsed?'▸':'▾';toggle.title=group.collapsed?'Mở nhóm':'Thu gọn nhóm';toggle.onclick=()=>{group.collapsed=!group.collapsed;renderTracks();scheduleSave()};let title=document.createElement('span');title.className='track-label';title.textContent='▣ '+group.name;title.title='Chọn các layer trong nhóm';title.onclick=e=>{selectedAudio=false;selectedKeys.clear();selectedKey=null;if(!(e.ctrlKey||e.metaKey||e.shiftKey))selectedClips.clear();let members=group.layerIds.filter(id=>project.layers.some(l=>l.id===id)),remove=(e.ctrlKey||e.metaKey)&&members.every(id=>selectedClips.has(id));for(const id of members)if(remove)selectedClips.delete(id);else selectedClips.add(id);selected=[...selectedClips][0]||'camera';renderLayerList();renderTracks();showFields();attach();message('Đã chọn '+selectedClips.size+' layer trong '+group.name)};let ungroup=document.createElement('button');ungroup.className='ungroup';ungroup.textContent='×';ungroup.title='Tách nhóm';ungroup.setAttribute('aria-label','Tách '+group.name);ungroup.onclick=()=>{ungroupLayers(project,group.id);renderTracks();showFields();attach();scheduleSave();message('Đã tách nhóm; Ctrl+Z để hoàn tác')};name.append(toggle,title,ungroup);const rail=createTrackRail();row.append(name,rail);if(isGraphicTemplate(group))addTemplateGroupClip(group,rail,title.onclick);return row}
 $('#groupLayersButton').onclick=()=>groupSelection();
 let tracksCollapsed=false;$('#collapseTracks').onclick=()=>{tracksCollapsed=!tracksCollapsed;for(const g of project.groups||[])g.collapsed=tracksCollapsed;for(const l of [project.camera,...project.layers])l.effectsCollapsed=tracksCollapsed;$('#collapseTracks').textContent=tracksCollapsed?'Mở nhóm':'Thu gọn';renderTracks();scheduleSave()};
 const transitionMime='application/x-vox-transition';
