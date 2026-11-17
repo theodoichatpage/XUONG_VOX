@@ -1,0 +1,197 @@
+import {clipBounds,moveClipIntervals,splitLayerAt} from './model.js';
+import {addSplitToGroup,removeMissingGroupMembers} from './groups.js';
+export function splitSelectedLayers(project,ids,time,makeId){let out=[];for(const id of ids){let index=project.layers.findIndex(l=>l.id===id);if(index<0||project.layers[index].locked)continue;let original=project.layers[index],split=splitLayerAt(original,time,project.duration,makeId());if(!split)continue;let [left,right]=split;left.laneId=right.laneId=original.laneId||original.id;project.layers.splice(index,1,left,right);addSplitToGroup(project,id,right.id);out.push(left.id,right.id)}return out}
+export function splitTimelineGroup(project,group,time,makeId){
+  const ids=new Set(group.layerIds);
+  const members=project.layers.filter(layer=>ids.has(layer.id));
+  if(members.some(layer=>layer.locked))return null;
+  const bounds=members.map(layer=>clipBounds(layer,project.duration));
+  if(!bounds.some(bound=>bound.start<time)||!bounds.some(bound=>bound.end>time))return null;
+
+  splitSelectedLayers(project,group.layerIds,time,makeId);
+  const allMembers=new Map(project.layers.map(layer=>[layer.id,layer]));
+  const left=[],right=[];
+  const rightLanes=new Map();
+  for(const id of group.layerIds){
+    const layer=allMembers.get(id);
+    if(!layer)continue;
+    if(clipBounds(layer,project.duration).start<time){
+      left.push(id);
+    }else{
+      right.push(id);
+      const lane=layer.laneId||id;
+      if(!rightLanes.has(lane))rightLanes.set(lane,makeId());
+      layer.laneId=rightLanes.get(lane);
+    }
+  }
+  group.layerIds=left;
+  const newGroup={...group,id:makeId(),layerIds:right};
+  if(Number.isFinite(group.batchStart)){
+    for(const part of [group,newGroup]){
+      const clips=part.layerIds.map(id=>clipBounds(allMembers.get(id),project.duration));
+      part.batchStart=Math.min(...clips.map(clip=>clip.start));
+      part.batchDuration=Math.max(...clips.map(clip=>clip.end))-part.batchStart;
+    }
+  }
+  project.groups.splice(project.groups.indexOf(group)+1,0,newGroup);
+  return newGroup;
+}
+
+export function placeOnLane(project,sourceId,targetId){if(sourceId===targetId)return false;let source=project.layers.find(l=>l.id===sourceId),target=project.layers.find(l=>l.id===targetId);if(!source||!target)throw Error('Không tìm thấy layer');if(source.locked||target.locked)throw Error('Hãy mở khóa layer trước');let lane=target.laneId||target.id,members=project.layers.filter(l=>(l.laneId||l.id)===lane&&l.id!==source.id),a=clipBounds(source,project.duration);if(members.some(l=>{let b=clipBounds(l,project.duration);return a.start<b.end-EDGE_EPSILON&&b.start<a.end-EDGE_EPSILON}))throw Error('Các đoạn trên cùng hàng không được chồng thời gian');source.laneId=lane;target.laneId=lane;let targetGroup=(project.groups||[]).find(g=>g.layerIds.includes(target.id));for(const group of project.groups||[])group.layerIds=group.layerIds.filter(id=>id!==source.id);if(targetGroup){let index=targetGroup.layerIds.indexOf(target.id);targetGroup.layerIds.splice(index+1,0,source.id)}removeMissingGroupMembers(project);return true}
+
+const EDGE_EPSILON=1e-8;
+
+export function laneNeighbors(project,item,excluded=new Set()){
+  if(item===project.audio)return [];
+  const lane=item.laneId||item.id;
+  return project.layers
+    .filter(other=>other!==item&&!excluded.has(other)&&(other.laneId||other.id)===lane)
+    .map(other=>clipBounds(other,project.duration));
+}
+
+export function detachClipFromLane(project,item,newLaneId){
+  if(item.locked||!laneNeighbors(project,item).length)return false;
+  // The previous row may be keyed by this clip's ID. Keep that ID for its siblings.
+  item.laneId=newLaneId;
+  return true;
+}
+
+export function clipPlacement(project,items,duplicate){
+  const moving=new Set(items);
+  const entries=items.map(item=>({item,...clipBounds(item,project.duration)}));
+  const limits={min:-Math.min(...entries.map(e=>e.start)),max:project.duration-Math.max(...entries.map(e=>e.end))};
+  const obstacles=[];
+  for(const entry of entries){
+    const neighbors=laneNeighbors(project,entry.item,duplicate?undefined:moving);
+    if(duplicate)neighbors.push({start:entry.start,end:entry.end});
+    for(const neighbor of neighbors){
+      if(neighbor.end>neighbor.start&&entry.end>entry.start){
+        obstacles.push({min:neighbor.start-entry.end,max:neighbor.end-entry.start});
+      }
+    }
+  }
+  return {...limits,obstacles};
+}
+
+export function fitClipOffset({min,max,obstacles},requested,snapDistance=0){
+  const legal=delta=>delta>=min-EDGE_EPSILON&&delta<=max+EDGE_EPSILON&&
+    obstacles.every(block=>delta<=block.min+EDGE_EPSILON||delta>=block.max-EDGE_EPSILON);
+  const target=Math.max(min,Math.min(max,requested));
+  const edges=obstacles.flatMap(block=>[block.min,block.max]);
+  const candidates=legal(target)?edges.filter(edge=>Math.abs(edge-target)<=snapDistance):[...edges,min,max];
+  const closest=candidates.reduce((best,edge)=>legal(edge)&&(best===null||Math.abs(edge-target)<Math.abs(best-target))?edge:best,null);
+  return closest??(legal(target)?target:null);
+}
+
+export function groupClipTiming(project,items,edge,requested,snapDistance=0){
+  const duration=project.duration;
+  const entries=items.map(item=>({item,...clipBounds(item,duration)}));
+  if(!entries.length||entries.some(entry=>entry.item.locked||entry.end<=entry.start))return null;
+
+  const start=Math.min(...entries.map(entry=>entry.start));
+  const end=Math.max(...entries.map(entry=>entry.end));
+  const frame=1/30;
+  if(edge==='start'){
+    const limit=Math.max(start,Math.min(...entries.map(entry=>entry.end-frame)));
+    const cut=Math.min(limit,Math.max(start,start+requested));
+    return {start:cut,end,offset:0,entries:entries.map(entry=>({...entry,start:Math.max(cut,entry.start)}))};
+  }
+  if(edge==='end'){
+    const limit=Math.min(end,Math.max(...entries.map(entry=>entry.start+frame)));
+    const cut=Math.max(limit,Math.min(end,end+requested));
+    return {start,end:cut,offset:0,entries:entries.map(entry=>({...entry,end:Math.min(cut,entry.end)}))};
+  }
+
+  const placement=clipPlacement(project,items,false);
+  // A template that reaches the end of the scene can slide later while clipping at that boundary.
+  if(end===duration)placement.max=Math.max(0,duration-Math.max(...entries.map(entry=>entry.start+frame)));
+  const offset=fitClipOffset(placement,requested,snapDistance);
+  if(offset===null)return null;
+  return {
+    start:start+offset,end:Math.min(duration,end+offset),offset,
+    entries:entries.map(entry=>({...entry,start:entry.start+offset,end:Math.min(duration,entry.end+offset)})),
+  };
+}
+
+export function fitClipOnLane(project,item,target,requested,snapDistance){
+  if(item.locked||target.locked)return null;
+  const {start,end}=clipBounds(item,project.duration);
+  const lane=target.laneId||target.id;
+  const obstacles=project.layers.filter(other=>other!==item&&(other.laneId||other.id)===lane)
+    .map(other=>clipBounds(other,project.duration))
+    .filter(other=>other.end>other.start)
+    .map(other=>({min:other.start-end,max:other.end-start}));
+  const bounded=Math.max(-start,Math.min(project.duration-end,requested));
+  const offset=fitClipOffset({min:-start,max:project.duration-end,obstacles},bounded,snapDistance);
+  return offset!==null&&Math.abs(offset-bounded)<=snapDistance+EDGE_EPSILON?offset:null;
+}
+
+export function exactClipEdge(value,neighbors,edge){
+  return neighbors.find(bounds=>Math.abs(bounds[edge]-value)<EDGE_EPSILON)?.[edge]??value;
+}
+
+export function duplicateTimelineClips(project,ids,delta,makeId){
+  const selected=new Set(ids);
+  const sources=project.layers.filter(layer=>selected.has(layer.id)&&!layer.locked);
+  if(!sources.length)return [];
+  const offset=fitClipOffset(clipPlacement(project,sources,true),delta);
+  if(offset===null)return [];
+  const copiesBySource=new Map();
+  for(const layer of sources){
+    const copy=structuredClone(layer);
+    copy.id=makeId();
+    copy.name=copy.name.replace(/( \(bản sao\))?$/, ' (bản sao)');
+    copy.laneId=layer.laneId||layer.id;
+    copiesBySource.set(layer.id,copy);
+  }
+  const copies=[...copiesBySource.values()];
+  moveClipIntervals(copies,offset,project.duration);
+  for(const source of sources){
+    const copy=copiesBySource.get(source.id);
+    const neighbors=[clipBounds(source,project.duration),...laneNeighbors(project,source)];
+    copy.clipStart=exactClipEdge(copy.clipStart,neighbors,'end');
+    copy.clipEnd=exactClipEdge(copy.clipEnd,neighbors,'start');
+  }
+  for(const copy of copies){
+    if(!copy.transition)continue;
+    const partner=copiesBySource.get(copy.transition.partner);
+    if(!partner){
+      delete copy.transition;
+      continue;
+    }
+    copy.transition.partner=partner.id;
+    copy.transition.start+=offset;
+    copy.transition.end+=offset;
+  }
+  project.layers=project.layers.flatMap(layer=>{
+    const copy=copiesBySource.get(layer.id);
+    if(!copy)return [layer];
+    addSplitToGroup(project,layer.id,copy.id);
+    return [layer,copy];
+  });
+  return copies;
+}
+
+// Preserve timing and stacking when opening projects saved with overlapping clips on one row.
+export function separateOverlappingLanes(project){
+  const lanes=new Map();
+  for(const layer of project.layers){
+    const lane=layer.laneId||layer.id;
+    if(!lanes.has(lane))lanes.set(lane,[]);
+    lanes.get(lane).push(layer);
+  }
+  for(const [lane,layers] of lanes){
+    if(layers.length<2)continue;
+    const rows=[{id:lane,end:-Infinity}];
+    const sorted=layers.map(layer=>({layer,...clipBounds(layer,project.duration)})).sort((a,b)=>a.start-b.start);
+    for(const entry of sorted){
+      let row=rows.find(candidate=>entry.start>=candidate.end-EDGE_EPSILON);
+      if(!row){
+        row={id:'overflow:'+entry.layer.id,end:-Infinity};
+        rows.push(row);
+      }
+      row.end=entry.end;
+      if(row.id!==lane)entry.layer.laneId=row.id;
+    }
+  }
+}
