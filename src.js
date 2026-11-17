@@ -4,7 +4,7 @@ import {effectDefaults,paintLayerEffects,paintLayerShadow} from './layer-effects
 import {historyLineLayout} from './history-line.js';
 import {shapeCanvas,shapeNames,popScale} from './shapes.js';
 import {createImageStrip} from './image-strip.js';
-import {splitSelectedLayers,placeOnLane,duplicateTimelineClips,clipPlacement,fitClipOffset,laneNeighbors,exactClipEdge,separateOverlappingLanes,fitClipOnLane,detachClipFromLane,groupClipTiming} from './timeline-lanes.js';
+import {splitSelectedLayers,placeOnLane,duplicateTimelineClips,clipPlacement,fitClipOffset,laneNeighbors,exactClipEdge,separateOverlappingLanes,fitClipOnLane,detachClipFromLane,groupClipTiming,splitTemplateGroup} from './timeline-lanes.js';
 import {layerColor} from './layer-colors.js';
 import {createJoinTransition,clipJoin,transitionAt,transitionOptions} from './transitions.js';
 import {placeFolders} from './batch-timeline.js';
@@ -937,7 +937,7 @@ function resetButton(key,label){let b=document.createElement('button');b.type='b
 function propertyToggle(key,label){let item=current();normalizeEntity(item);let button=document.createElement('button');button.type='button';button.className='property-toggle'+(item.animated[key]?' enabled':'');button.textContent='◷';button.title=(item.animated[key]?'Tắt':'Bật')+' keyframe '+label;button.setAttribute('aria-label',button.title);button.setAttribute('aria-pressed',String(!!item.animated[key]));button.onclick=()=>{if(item.locked)return;let enabled=toggleProperty(item,key,time,$('#ease').value);selectedKeys.clear();selectedKey=null;renderTracks();applyAtTime();showFields();scheduleSave();message((enabled?'Đã bật':'Đã tắt')+' keyframe '+label)};return button}
 function fieldRow(label,key,v){let row=document.createElement('div');row.className='fields';row.append(propertyToggle(key,label));let title=document.createElement('span');title.textContent=label;row.append(title);v.forEach((x,i)=>{let input=document.createElement('input');input.type='number';input.step='0.1';input.value=Number(x.toFixed(2));let axis=key==='scale'&&i===2?'Đồng đều X/Y':['X','Y','Z'][i];input.title=label+' '+axis+' — kéo ngang để điều chỉnh, hoặc nhấp để nhập số';input.setAttribute('aria-label',label+' '+axis);let drag=null;input.addEventListener('pointerdown',e=>{if(e.button!==0)return;drag={id:e.pointerId,x:e.clientX,start:Number(input.value)||0,moved:false};history?.begin();input.setPointerCapture(e.pointerId)});input.addEventListener('pointermove',e=>{if(!drag||e.pointerId!==drag.id)return;let dx=e.clientX-drag.x;if(!drag.moved&&Math.abs(dx)<4)return;drag.moved=true;let sensitivity=key==='rotation'?.25:key==='scale'?.01:.05;let next=Math.round((drag.start+dx*sensitivity)*100)/100;if(key==='scale')next=Math.max(.01,next);input.value=next;mutateValue(v=>{if(key==='scale')v.scale=setScaleComponent(v.scale,i,next);else v[key][i]=next})});input.addEventListener('pointerup',e=>{if(!drag||e.pointerId!==drag.id)return;let moved=drag.moved;drag=null;history?.end();if(moved){e.preventDefault();input.blur()} });input.addEventListener('pointercancel',()=>{drag=null;history?.end()});input.onchange=()=>{let next=Number(input.value);if(!Number.isFinite(next))return;if(key==='scale')next=Math.max(.01,next);mutateValue(v=>{if(key==='scale')v.scale=setScaleComponent(v.scale,i,next);else v[key][i]=next});showFields()};row.append(input)});row.append(resetButton(key,label));return row}
 function selectedGraphicTemplate(){
-  if(selectedAudio||selectedClips.size<2||!selectedClips.has(selected))return null;
+  if(selectedAudio||!selectedClips.has(selected))return null;
   return (project.groups||[]).find(group=>isGraphicTemplate(group)&&
     group.layerIds.length===selectedClips.size&&group.layerIds.every(id=>selectedClips.has(id)));
 }
@@ -1225,6 +1225,15 @@ function addTemplateGroupClip(group,rail,selectGroup){
   if(!bounds.length)return;
   const bar=document.createElement('div');
   bar.className='clip-bar template-group-clip';
+  bar.classList.toggle('selected-clip',group===selectedGraphicTemplate());
+  bar.tabIndex=0;
+  bar.setAttribute('role','button');
+  bar.addEventListener('keydown',event=>{
+    if(event.key!=='Enter'&&event.key!==' ')return;
+    event.preventDefault();
+    event.stopPropagation();
+    selectGroup(event);
+  });
   bar.title='Kéo thân để dời cả nhóm · Kéo hai mép vào trong để cắt ngắn';
   bar.setAttribute('aria-label','Thời lượng '+group.name);
   const caption=document.createElement('span');
@@ -1255,6 +1264,7 @@ function addTemplateGroupClip(group,rail,selectGroup){
     if(event.button!==0||event.altKey)return;
     event.preventDefault();
     event.stopPropagation();
+    bar.focus({preventScroll:true});
     if(items.some(item=>item.locked)){
       message('Mở khóa các layer trong nhóm để chỉnh thời lượng');
       return;
@@ -1292,9 +1302,8 @@ function addTemplateGroupClip(group,rail,selectGroup){
         item.transition.end+=timing.offset;
       }
     }
-    renderTracks();
+    selectGroup(event);
     applyAtTime();
-    showFields();
     attach();
     scheduleSave();
   }
@@ -1514,8 +1523,21 @@ function renderTracks(){const newRow=$('#timelineNewRow');newRow.replaceChildren
 if(!item.effectsCollapsed)for(const prop of Object.keys(item.value)){let keys=item.keys.filter(k=>k.property===prop);if(!keys.length&&!item.animated[prop])continue;let row=document.createElement('div');row.className='track property-track';let name=document.createElement('span');name.className='track-name property-track-name';name.textContent='↳ '+({position:'Position',rotation:'Rotation',target:'Target',fov:'FOV',scale:'Scale',opacity:'Opacity',length:'Chiều dài'}[prop]||prop)+(item.animated[prop]?'':' (tắt)');name.onclick=()=>select(id);row.append(name);let rail=createTrackRail();for(const key of keys){if(id!=='camera'){let bounds=clipBounds(item,project.duration);if(key.time<bounds.start||key.time>=bounds.end&&bounds.end<project.duration)continue}let b=document.createElement('button');keyElements.set(b,key);installAltDuplicate(b,rail,()=>{let chosen=selectedKeys.has(key)?[...selectedKeys]:[key];return chosen.map(k=>({entity:[project.camera,...project.layers].find(e=>e.keys.includes(k)),key:k})).filter(x=>x.entity&&!x.entity.locked)},id);b.className='key'+(selectedKeys.has(key)||selectedKey===key?' selected':'')+(isEasedKey(key)?' eased':'');b.textContent=isEasedKey(key)?'':'◆';b.setAttribute('aria-label',prop+' '+key.time.toFixed(2)+'s '+(key.easing||'linear'));b.style.left=(key.time/project.duration*100)+'%';b.title=prop+' · '+key.time.toFixed(2)+'s · '+(key.easing||'linear');b.onclick=e=>{e.stopPropagation();if(e.altKey)return;if(!(e.ctrlKey||e.metaKey||e.shiftKey)){selectedKeys.clear();selectedClips.clear()}if(selectedKeys.has(key)&&(e.ctrlKey||e.metaKey||e.shiftKey)){selectedKeys.delete(key);selectedKey=null}else{selectedKeys.add(key);selectedKey=key}selected=id;time=key.time;seekAudio();$('#keyTime').value=key.time.toFixed(2);$('#ease').value=key.easing;renderLayerList();renderTracks();applyAtTime();showFields();attach()};b.draggable=true;b.ondragend=e=>{if(!e.clientX)return;let desired=clamp((e.clientX-rail.getBoundingClientRect().left)/rail.clientWidth*project.duration,0,project.duration);let group=selectedKeys.has(key)?[...selectedKeys]:[key];let delta=clamp(desired-key.time,-Math.min(...group.map(k=>k.time)),project.duration-Math.max(...group.map(k=>k.time)));for(const k of group)k.time+=delta;time=key.time;renderTracks();applyAtTime();scheduleSave()};rail.append(b)}row.append(rail);root.append(row)}}if(project.audio){let row=document.createElement('div');row.className='track audio-track';let name=document.createElement('span');name.className='track-name audio-name';name.textContent='♫ '+project.audio.name;name.title=project.audio.name;row.append(name);let rail=createTrackRail(),bar=document.createElement('div');bar.className='audio-bar'+(selectedAudio?' audio-selected':'');bar.textContent='♫ Âm thanh';let audioBounds=clipBounds(project.audio,project.duration);bar.style.left=(100*audioBounds.start/project.duration)+'%';bar.style.width=(100*(audioBounds.end-audioBounds.start)/project.duration)+'%';enableClipMove(bar,project.audio,rail,true);addClipResizeHandle(bar,project.audio,rail,'end',true);bar.title='Chọn âm thanh, đặt vạch thời gian và nhấn C để cắt';bar.onclick=e=>{e.stopPropagation();if(e.ctrlKey||e.metaKey||e.shiftKey)selectedAudio=!selectedAudio;else{selectedAudio=true;selectedClips.clear();selectedKeys.clear();selectedKey=null}renderTracks()};name.onclick=bar.onclick;rail.append(bar);row.append(rail);root.append(row)}appendTransitionJoins(laneRails)}
 function createTrackRail(){let rail=document.createElement('div');rail.className='rail';rail.onclick=e=>{time=clamp((e.clientX-rail.getBoundingClientRect().left)/rail.clientWidth*project.duration,0,project.duration);seekAudio();applyAtTime();showFields()};return rail}
 
-function deleteTimelineSelection(keysOnly=false){let keys=new Set(selectedKeys);if(selectedKey)keys.add(selectedKey);let clipIds=keysOnly?new Set():new Set(selectedClips);if(!keysOnly&&!keys.size&&!clipIds.size&&selected!=='camera'&&project.layers.some(l=>l.id===selected))clipIds.add(selected);for(const id of [...clipIds])if(project.layers.find(l=>l.id===id)?.locked)clipIds.delete(id);for(const key of [...keys])if(project.layers.some(l=>l.locked&&l.keys?.includes(key)))keys.delete(key);if(!keys.size&&!clipIds.size){message('Chọn layer hoặc keyframe chưa khóa');return}project.camera.keys=project.camera.keys.filter(k=>!keys.has(k));for(const layer of project.layers)layer.keys=layer.keys.filter(k=>!keys.has(k));if(clipIds.size){project.layers=project.layers.filter(l=>!clipIds.has(l.id));removeMissingGroupMembers(project)}selectedKey=null;selectedKeys.clear();selectedClips.clear();if(selected!=='camera'&&!project.layers.some(l=>l.id===selected))selected='camera';if(clipIds.size)rebuild();else{renderTracks();applyAtTime();showFields()}scheduleSave();message('Đã xóa; Ctrl+Z để hoàn tác')}
-function trimSelectedClips(){if(selectedAudio){alert('Tách âm thanh chưa được hỗ trợ; âm thanh chưa bị thay đổi.');return}let ids=selectedClips.size?[...selectedClips]:(selected==='camera'?[]:[selected]);let result=splitSelectedLayers(project,ids,time,()=>crypto.randomUUID());if(!result.length){alert('Chọn layer chưa khóa và đặt vạch thời gian bên trong đoạn cần tách.');return}selected=result[1];rebuild().then(()=>{selectedClips.clear();selectedClips.add(selected);renderTracks();showFields();attach()});scheduleSave()}
+function deleteTimelineSelection(keysOnly=false){const group=keysOnly?null:selectedGraphicTemplate();if(group&&project.layers.some(layer=>selectedClips.has(layer.id)&&layer.locked)){message('Mở khóa các layer trong nhóm để xóa cả nhóm');return}let keys=new Set(selectedKeys);if(selectedKey)keys.add(selectedKey);let clipIds=keysOnly?new Set():new Set(selectedClips);if(!keysOnly&&!keys.size&&!clipIds.size&&selected!=='camera'&&project.layers.some(l=>l.id===selected))clipIds.add(selected);for(const id of [...clipIds])if(project.layers.find(l=>l.id===id)?.locked)clipIds.delete(id);for(const key of [...keys])if(project.layers.some(l=>l.locked&&l.keys?.includes(key)))keys.delete(key);if(!keys.size&&!clipIds.size){message('Chọn layer hoặc keyframe chưa khóa');return}project.camera.keys=project.camera.keys.filter(k=>!keys.has(k));for(const layer of project.layers)layer.keys=layer.keys.filter(k=>!keys.has(k));if(clipIds.size){project.layers=project.layers.filter(l=>!clipIds.has(l.id));removeMissingGroupMembers(project)}selectedKey=null;selectedKeys.clear();selectedClips.clear();if(selected!=='camera'&&!project.layers.some(l=>l.id===selected))selected='camera';if(clipIds.size)rebuild();else{renderTracks();applyAtTime();showFields()}scheduleSave();message('Đã xóa; Ctrl+Z để hoàn tác')}
+function trimSelectedClips(){if(selectedAudio){alert('Tách âm thanh chưa được hỗ trợ; âm thanh chưa bị thay đổi.');return}const group=selectedGraphicTemplate();if(group){
+  const right=splitTemplateGroup(project,group,time,()=>crypto.randomUUID());
+  if(!right){message('Đặt vạch thời gian bên trong nhóm và mở khóa các layer để tách');return}
+  selected=right.layerIds[0];
+  rebuild();
+  selectedClips=new Set(right.layerIds);
+  renderLayerList();
+  renderTracks();
+  showFields();
+  attach();
+  scheduleSave();
+  message('Đã tách '+group.name+' thành hai nhóm');
+  return;
+}let ids=selectedClips.size?[...selectedClips]:(selected==='camera'?[]:[selected]);let result=splitSelectedLayers(project,ids,time,()=>crypto.randomUUID());if(!result.length){alert('Chọn layer chưa khóa và đặt vạch thời gian bên trong đoạn cần tách.');return}selected=result[1];rebuild().then(()=>{selectedClips.clear();selectedClips.add(selected);renderTracks();showFields();attach()});scheduleSave()}
 function trimTimelineToPlayhead(){if(time<1/30||time>=project.duration)return;project.duration=time;playing=false;audioElement.pause();$('#play').textContent='▶ Phát';$('#duration').value=Number(project.duration.toFixed(3));$('#time').max=project.duration;renderTicks();renderTracks();seekAudio();applyAtTime();scheduleSave()}
 // Selection starts only on empty timeline space and remains within the track area.
 let selectionDrag=null,suppressRailClick=false;const trackRoot=$('#tracks');
