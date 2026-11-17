@@ -4,7 +4,7 @@ import {effectDefaults,paintLayerEffects,paintLayerShadow} from './layer-effects
 import {historyLineLayout} from './history-line.js';
 import {shapeCanvas,shapeNames,popScale} from './shapes.js';
 import {createImageStrip} from './image-strip.js';
-import {splitSelectedLayers,placeOnLane,duplicateTimelineClips,clipPlacement,fitClipOffset,laneNeighbors,exactClipEdge,separateOverlappingLanes,fitClipOnLane,detachClipFromLane} from './timeline-lanes.js';
+import {splitSelectedLayers,placeOnLane,duplicateTimelineClips,clipPlacement,fitClipOffset,laneNeighbors,exactClipEdge,separateOverlappingLanes,fitClipOnLane,detachClipFromLane,groupClipTiming} from './timeline-lanes.js';
 import {layerColor} from './layer-colors.js';
 import {createJoinTransition,clipJoin,transitionAt,transitionOptions} from './transitions.js';
 import {placeFolders} from './batch-timeline.js';
@@ -1172,7 +1172,88 @@ function enableClipMove(bar,layer,rail,isAudio=false){
 }
 function addClipResizeHandle(bar,item,rail,edge,isAudio){let grip=document.createElement('div');grip.className='clip-handle '+edge;grip.setAttribute('role','slider');grip.setAttribute('aria-label',edge==='start'?'Kéo điểm bắt đầu':'Kéo điểm kết thúc các thanh đã chọn');grip.title=edge==='start'?'Kéo điểm bắt đầu':'Kéo điểm kết thúc các thanh đã chọn';let drag=null;grip.addEventListener('pointerdown',e=>{if(e.button!==0||e.altKey||item.locked)return;e.stopPropagation();e.preventDefault();let grouped=isAudio?selectedAudio:selectedClips.has(item.id);let items=grouped?project.layers.filter(l=>selectedClips.has(l.id)&&!l.locked):[item];if(grouped&&selectedAudio&&project.audio)items.push(project.audio);if(!items.includes(item))items.push(item);if(edge==='start')items=[item];let entries=items.map(x=>{let b=clipBounds(x,project.duration);const neighbors=laneNeighbors(project,x);const next=Math.min(project.duration,...neighbors.filter(n=>n.start>=b.end-1e-8).map(n=>n.start));const previous=Math.max(0,...neighbors.filter(n=>n.end<=b.start+1e-8).map(n=>n.end));return {item:x,start:b.start,end:b.end,previous,next,neighbors,maxEnd:x===project.audio?Math.min(project.duration,b.start+(Number(x.duration)||project.duration)):next}});drag={id:e.pointerId,x:e.clientX,width:rail.getBoundingClientRect().width,entries};grip.setPointerCapture(e.pointerId);history.begin()});grip.addEventListener('pointermove',e=>{if(!drag||e.pointerId!==drag.id||!drag.width)return;e.stopPropagation();let delta=Math.round((e.clientX-drag.x)/drag.width*project.duration*30)/30;if(edge==='end'){const stop=Math.min(...drag.entries.map(x=>x.maxEnd-x.end));if(Math.abs(stop-delta)<=magnetDistance(drag.width))delta=stop;resizeClipEnds(drag.entries,delta,project.duration);for(const x of drag.entries)x.item.clipEnd=exactClipEdge(x.item.clipEnd,x.neighbors,'start')}else{let x=drag.entries[0];if(Math.abs(x.start+delta-x.previous)<=magnetDistance(drag.width))delta=x.previous-x.start;x.item.clipStart=exactClipEdge(clamp(x.start+delta,x.previous,Math.max(x.previous,x.end-1/30)),x.neighbors,'end')}for(const x of drag.entries){let el=x.item===project.audio?document.querySelector('.audio-bar'):[...document.querySelectorAll('.clip-bar')].find(n=>n.dataset.layerId===x.item.id);if(el){let b=clipBounds(x.item,project.duration);el.style.left=(100*b.start/project.duration)+'%';el.style.width=(100*(b.end-b.start)/project.duration)+'%'}}applyAtTime();scheduleSave()});function finish(e){if(!drag||e.pointerId!==drag.id)return;e.stopPropagation();if(e.type==='pointercancel'){for(const x of drag.entries){x.item.clipStart=x.start;x.item.clipEnd=x.end}applyAtTime();scheduleSave()}drag=null;history.end();renderTracks()}grip.addEventListener('pointerup',finish);grip.addEventListener('pointercancel',finish);grip.addEventListener('click',e=>e.stopPropagation());bar.append(grip)}
 function makeClipBar(layer,rail){let bar=document.createElement('div');bar.className='clip-bar';bar.dataset.layerId=layer.id;const caption=document.createElement('span');caption.className='clip-caption';caption.textContent=layer.name;bar.append(caption);enableClipMove(bar,layer,rail);bar.classList.toggle('selected-clip',selectedClips.has(layer.id));bar.addEventListener('click',e=>{e.stopPropagation();if(e.altKey)return;if(!(e.ctrlKey||e.metaKey||e.shiftKey)){selectedAudio=false;selectedKeys.clear();selectedClips.clear()}if(selectedClips.has(layer.id)&&(e.ctrlKey||e.metaKey||e.shiftKey))selectedClips.delete(layer.id);else selectedClips.add(layer.id);selected=layer.id;selectedKey=null;renderLayerList();renderTracks();showFields();attach()});bar.style.setProperty('--clip-color',layerColor(layer));function position(){const {start,end}=clipBounds(layer,project.duration);bar.style.left=(start/project.duration*100)+'%';bar.style.width=((end-start)/project.duration*100)+'%';bar.title=layer.name+' · '+start.toFixed(2)+'s đến '+end.toFixed(2)+'s · Kéo để di chuyển hoặc chuyển hàng · Alt+kéo để sao chép clip'}position();for(const edge of ['start','end'])addClipResizeHandle(bar,layer,rail,edge,false);return bar}
-function makeGroupRow(group){let row=document.createElement('div');row.className='track group-track';let name=document.createElement('span');name.className='track-name';let toggle=document.createElement('button');toggle.className='group-toggle';toggle.textContent=group.collapsed?'▸':'▾';toggle.title=group.collapsed?'Mở nhóm':'Thu gọn nhóm';toggle.onclick=()=>{group.collapsed=!group.collapsed;renderTracks();scheduleSave()};let title=document.createElement('span');title.className='track-label';title.textContent='▣ '+group.name;title.title='Chọn các layer trong nhóm';title.onclick=e=>{selectedKeys.clear();if(!(e.ctrlKey||e.metaKey||e.shiftKey))selectedClips.clear();let members=group.layerIds.filter(id=>project.layers.some(l=>l.id===id)),remove=(e.ctrlKey||e.metaKey)&&members.every(id=>selectedClips.has(id));for(const id of members)if(remove)selectedClips.delete(id);else selectedClips.add(id);selected=[...selectedClips][0]||'camera';renderLayerList();renderTracks();showFields();attach();message('Đã chọn '+selectedClips.size+' layer trong '+group.name)};let ungroup=document.createElement('button');ungroup.className='ungroup';ungroup.textContent='×';ungroup.title='Tách nhóm';ungroup.setAttribute('aria-label','Tách '+group.name);ungroup.onclick=()=>{ungroupLayers(project,group.id);renderTracks();scheduleSave();message('Đã tách nhóm; Ctrl+Z để hoàn tác')};name.append(toggle,title,ungroup);row.append(name,createTrackRail());return row}
+function addHistoryGroupClip(group,rail){
+  const ids=new Set(group.layerIds);
+  const items=project.layers.filter(layer=>ids.has(layer.id));
+  const bounds=items.map(item=>clipBounds(item,project.duration));
+  if(!bounds.length)return;
+  const bar=document.createElement('div');
+  bar.className='clip-bar history-group-clip';
+  bar.title='Kéo thân để dời cả nhóm · Kéo hai mép vào trong để cắt ngắn';
+  bar.setAttribute('aria-label','Thời lượng '+group.name);
+  const caption=document.createElement('span');
+  caption.className='clip-caption';
+  caption.textContent=group.name;
+  bar.append(caption);
+  for(const edge of ['start','end']){
+    const handle=document.createElement('div');
+    handle.className='clip-handle '+edge;
+    handle.dataset.groupEdge=edge;
+    handle.title=edge==='start'?'Cắt đầu nhóm':'Cắt cuối nhóm';
+    bar.append(handle);
+  }
+  function show(start,end){
+    bar.style.left=(100*start/project.duration)+'%';
+    bar.style.width=(100*(end-start)/project.duration)+'%';
+  }
+  const first=Math.min(...bounds.map(bound=>bound.start));
+  const last=Math.max(...bounds.map(bound=>bound.end));
+  show(first,last);
+  rail.append(bar);
+  let drag=null;
+  bar.addEventListener('click',event=>event.stopPropagation());
+  bar.addEventListener('pointerdown',event=>{
+    if(event.button!==0||event.altKey)return;
+    event.preventDefault();
+    event.stopPropagation();
+    if(items.some(item=>item.locked)){
+      message('Mở khóa các layer trong nhóm để chỉnh thời lượng');
+      return;
+    }
+    const width=rail.getBoundingClientRect().width;
+    if(!width)return;
+    drag={id:event.pointerId,x:event.clientX,width,edge:event.target.dataset.groupEdge,timing:null};
+    bar.setPointerCapture(event.pointerId);
+  });
+  bar.addEventListener('pointermove',event=>{
+    if(drag?.id!==event.pointerId)return;
+    const distance=event.clientX-drag.x;
+    if(!drag.timing&&Math.abs(distance)<4)return;
+    const requested=Math.round(distance/drag.width*project.duration*30)/30;
+    drag.timing=groupClipTiming(project,items,drag.edge,requested,magnetDistance(drag.width));
+    if(drag.timing)show(drag.timing.start,drag.timing.end);
+    else show(first,last);
+  });
+  function finish(event){
+    if(drag?.id!==event.pointerId)return;
+    const timing=drag.timing;
+    drag=null;
+    event.stopPropagation();
+    if(event.type!=='pointerup'||!timing||(timing.start===first&&timing.end===last)){
+      show(first,last);
+      return;
+    }
+    for(const {item,start,end} of timing.entries){
+      item.clipStart=start;
+      item.clipEnd=end;
+      if(!timing.offset)continue;
+      for(const key of item.keys||[])key.time+=timing.offset;
+      if(ids.has(item.transition?.partner)){
+        item.transition.start+=timing.offset;
+        item.transition.end+=timing.offset;
+      }
+    }
+    renderTracks();
+    applyAtTime();
+    showFields();
+    attach();
+    scheduleSave();
+  }
+  bar.addEventListener('pointerup',finish);
+  bar.addEventListener('pointercancel',finish);
+  bar.addEventListener('lostpointercapture',finish);
+}
+function makeGroupRow(group){let row=document.createElement('div');row.className='track group-track';let name=document.createElement('span');name.className='track-name';let toggle=document.createElement('button');toggle.className='group-toggle';toggle.textContent=group.collapsed?'▸':'▾';toggle.title=group.collapsed?'Mở nhóm':'Thu gọn nhóm';toggle.onclick=()=>{group.collapsed=!group.collapsed;renderTracks();scheduleSave()};let title=document.createElement('span');title.className='track-label';title.textContent='▣ '+group.name;title.title='Chọn các layer trong nhóm';title.onclick=e=>{selectedKeys.clear();if(!(e.ctrlKey||e.metaKey||e.shiftKey))selectedClips.clear();let members=group.layerIds.filter(id=>project.layers.some(l=>l.id===id)),remove=(e.ctrlKey||e.metaKey)&&members.every(id=>selectedClips.has(id));for(const id of members)if(remove)selectedClips.delete(id);else selectedClips.add(id);selected=[...selectedClips][0]||'camera';renderLayerList();renderTracks();showFields();attach();message('Đã chọn '+selectedClips.size+' layer trong '+group.name)};let ungroup=document.createElement('button');ungroup.className='ungroup';ungroup.textContent='×';ungroup.title='Tách nhóm';ungroup.setAttribute('aria-label','Tách '+group.name);ungroup.onclick=()=>{ungroupLayers(project,group.id);renderTracks();scheduleSave();message('Đã tách nhóm; Ctrl+Z để hoàn tác')};name.append(toggle,title,ungroup);const rail=createTrackRail();row.append(name,rail);if(group.historyLine||group.name==='Dòng lịch sử')addHistoryGroupClip(group,rail);return row}
 $('#groupLayersButton').onclick=()=>groupSelection();
 let tracksCollapsed=false;$('#collapseTracks').onclick=()=>{tracksCollapsed=!tracksCollapsed;for(const g of project.groups||[])g.collapsed=tracksCollapsed;for(const l of [project.camera,...project.layers])l.effectsCollapsed=tracksCollapsed;$('#collapseTracks').textContent=tracksCollapsed?'Mở nhóm':'Thu gọn';renderTracks();scheduleSave()};
 const transitionMime='application/x-vox-transition';
@@ -1391,7 +1472,7 @@ function trimTimelineToPlayhead(){if(time<1/30||time>=project.duration)return;pr
 let selectionDrag=null,suppressRailClick=false;const trackRoot=$('#tracks');
 trackRoot.addEventListener('pointerdown',e=>{if(!e.target.closest('.audio-bar,.audio-name,.clip-bar')&&!e.ctrlKey&&!e.metaKey&&!e.shiftKey)selectedAudio=false;if(e.button!==0||!e.target.closest('.rail')||e.target.closest('.key,.clip-handle,.clip-bar'))return;selectionDrag={id:e.pointerId,x:e.clientX,y:e.clientY,add:e.ctrlKey||e.metaKey||e.shiftKey,active:false}});
 trackRoot.addEventListener('pointermove',e=>{if(!selectionDrag||e.pointerId!==selectionDrag.id)return;const d=selectionDrag;if(!d.active&&Math.hypot(e.clientX-d.x,e.clientY-d.y)<5)return;if(!d.active){d.active=true;trackRoot.setPointerCapture(e.pointerId);d.box=document.createElement('div');d.box.className='selection-box';trackRoot.append(d.box)}const rect=trackRoot.getBoundingClientRect();let x=Math.max(rect.left,Math.min(rect.right,e.clientX)),y=Math.max(rect.top,Math.min(rect.bottom,e.clientY)),left=Math.max(rect.left,Math.min(d.x,x)),top=Math.max(rect.top,Math.min(d.y,y));Object.assign(d.box.style,{left:(left-rect.left)+'px',top:(top-rect.top)+'px',width:Math.abs(x-d.x)+'px',height:Math.abs(y-d.y)+'px'})});
-function endSelection(e){if(!selectionDrag||e.pointerId!==selectionDrag.id)return;let d=selectionDrag;selectionDrag=null;if(!d.active)return;let r=d.box.getBoundingClientRect();d.box.remove();if(e.type==='pointercancel')return;if(!d.add){selectedKeys.clear();selectedClips.clear();selectedAudio=false}const intersects=el=>{let b=el.getBoundingClientRect();return b.right>=r.left&&b.left<=r.right&&b.bottom>=r.top&&b.top<=r.bottom};for(const [el,key] of keyElements)if(intersects(el))selectedKeys.add(key);for(const bar of trackRoot.querySelectorAll('.clip-bar'))if(intersects(bar))selectedClips.add(bar.dataset.layerId);let audioBar=trackRoot.querySelector('.audio-bar');if(audioBar&&intersects(audioBar))selectedAudio=true;selectedKey=selectedKeys.size?[...selectedKeys][0]:null;suppressRailClick=true;setTimeout(()=>suppressRailClick=false,0);renderTracks();message('Đã chọn '+selectedKeys.size+' keyframe, '+selectedClips.size+' thanh')}
+function endSelection(e){if(!selectionDrag||e.pointerId!==selectionDrag.id)return;let d=selectionDrag;selectionDrag=null;if(!d.active)return;let r=d.box.getBoundingClientRect();d.box.remove();if(e.type==='pointercancel')return;if(!d.add){selectedKeys.clear();selectedClips.clear();selectedAudio=false}const intersects=el=>{let b=el.getBoundingClientRect();return b.right>=r.left&&b.left<=r.right&&b.bottom>=r.top&&b.top<=r.bottom};for(const [el,key] of keyElements)if(intersects(el))selectedKeys.add(key);for(const bar of trackRoot.querySelectorAll('.clip-bar[data-layer-id]'))if(intersects(bar))selectedClips.add(bar.dataset.layerId);let audioBar=trackRoot.querySelector('.audio-bar');if(audioBar&&intersects(audioBar))selectedAudio=true;selectedKey=selectedKeys.size?[...selectedKeys][0]:null;suppressRailClick=true;setTimeout(()=>suppressRailClick=false,0);renderTracks();message('Đã chọn '+selectedKeys.size+' keyframe, '+selectedClips.size+' thanh')}
 trackRoot.addEventListener('pointerup',endSelection);trackRoot.addEventListener('pointercancel',endSelection);trackRoot.addEventListener('click',e=>{if(suppressRailClick){e.preventDefault();e.stopImmediatePropagation()}},true);
 document.addEventListener('keydown',e=>{if(e.ctrlKey||e.metaKey||e.altKey||e.repeat||busy)return;let target=e.target;if(target instanceof HTMLElement&&(target.isContentEditable||/^(TEXTAREA|SELECT)$/.test(target.tagName)||(target.tagName==='INPUT'&&target.type!=='range')))return;let k=e.key.toLowerCase();if(k==='t'){e.preventDefault();setInspectorTab('text');if(current()?.kind==='text')$('#textContent')?.focus()}else if(k==='c'){e.preventDefault();trimSelectedClips()}else if(k==='x'){e.preventDefault();trimTimelineToPlayhead()}else if(k==='d'){e.preventDefault();deleteTimelineSelection()}});
 $('#addKey').onclick=()=>{let item=current();if(item?.locked)return;let value=selectedValue(),props=Object.keys(value).filter(p=>item.animated[p]);if(!props.length){message('Bật nút ◷ ở đầu dòng thông số cần tạo keyframe');return}selectedKeys.clear();selectedClips.clear();for(const prop of props){selectedKey=putPropertyKey(item,prop,time,value[prop],$('#ease').value);selectedKeys.add(selectedKey)}$('#keyTime').value=time.toFixed(2);renderTracks();scheduleSave()};$('#deleteKey').onclick=()=>deleteTimelineSelection(true);$('#moveKey').onclick=()=>{if(!selectedKey||project.layers.some(l=>l.locked&&l.keys?.includes(selectedKey)))return;selectedKey.time=clamp(Number($('#keyTime').value),0,project.duration);time=selectedKey.time;seekAudio();renderTracks();applyAtTime();scheduleSave()};$('#ease').onchange=()=>{let keys=selectedKeys.size?[...selectedKeys]:selectedKey?[selectedKey]:[];if(!keys.length){

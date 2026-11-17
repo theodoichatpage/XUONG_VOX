@@ -1,4 +1,4 @@
-import {test} from 'node:test';import assert from 'node:assert/strict';import {splitSelectedLayers,placeOnLane,duplicateTimelineClips,clipPlacement,fitClipOffset} from '../timeline-lanes.js';
+import {test} from 'node:test';import assert from 'node:assert/strict';import {splitSelectedLayers,placeOnLane,duplicateTimelineClips,clipPlacement,fitClipOffset,groupClipTiming} from '../timeline-lanes.js';
 test('splits selected clips without losing animation and selects both pieces',()=>{let p={duration:10,layers:[{id:'a',clipStart:0,clipEnd:10,keys:[{time:7,property:'opacity',value:.5}]},{id:'b',keys:[]}],groups:[{id:'g',layerIds:['a']}]};let result=splitSelectedLayers(p,['a'],4,()=> 'right');assert.deepEqual(result,['a','right']);assert.equal(p.layers.length,3);assert.equal(p.layers[0].clipEnd,4);assert.equal(p.layers[1].clipStart,4);assert.deepEqual(p.layers[1].keys,p.layers[0].keys);assert.equal(p.layers[0].laneId,p.layers[1].laneId);assert.deepEqual(p.groups[0].layerIds,['a','right'])});
 test('two non-overlapping objects can share a timeline lane',()=>{let p={duration:10,layers:[{id:'a',clipStart:0,clipEnd:3},{id:'b',clipStart:3,clipEnd:6}]};assert.equal(placeOnLane(p,'a','b'),true);assert.equal(p.layers[0].laneId,p.layers[1].laneId)});
 test('refuses overlapping objects on a lane without modifying either',()=>{let p={duration:10,layers:[{id:'a',clipStart:0,clipEnd:4},{id:'b',clipStart:3,clipEnd:6}]};assert.throws(()=>placeOnLane(p,'a','b'),/chồng/);assert.equal(p.layers[0].laneId,undefined)});
@@ -94,4 +94,33 @@ test('detaches the original clip from a shared row without moving its siblings',
   assert.deepEqual(original.keys,[{time:1}]);
   assert.deepEqual(project.groups[0].layerIds,['a','b']);
   assert.equal(detachClipFromLane(project,original,'another-row'),false);
+});
+
+test('moves a history group later at the scene boundary with staggered starts',()=>{
+  const axis={id:'axis',clipStart:0};
+  const marker={id:'marker',clipStart:1};
+  const project={duration:10,layers:[axis,marker]};
+  const timing=groupClipTiming(project,project.layers,undefined,3);
+  assert.equal(timing.offset,3);
+  assert.deepEqual(timing.entries.map(({start,end})=>[start,end]),[[3,10],[4,10]]);
+  assert.equal(axis.clipStart,0);
+});
+
+test('trims history group edges without moving staggered starts or extending clips',()=>{
+  const axis={id:'axis',clipStart:2,clipEnd:9};
+  const marker={id:'marker',clipStart:3,clipEnd:7};
+  const project={duration:10,layers:[axis,marker]};
+  const bounds=timing=>timing.entries.map(({start,end})=>[start,end]);
+  assert.deepEqual(bounds(groupClipTiming(project,project.layers,'end',-1)),[[2,8],[3,7]]);
+  assert.deepEqual(bounds(groupClipTiming(project,project.layers,'start',.5)),[[2.5,9],[3,7]]);
+  assert.equal(groupClipTiming(project,project.layers,'end',-9).end,3+1/30);
+});
+
+test('respects locked group members and clips outside the group on the same lane',()=>{
+  const axis={id:'axis',laneId:'shared',clipStart:1,clipEnd:4};
+  const neighbor={id:'neighbor',laneId:'shared',clipStart:5,clipEnd:7};
+  const project={duration:10,layers:[axis,neighbor]};
+  assert.equal(groupClipTiming(project,[axis],undefined,2).offset,1);
+  axis.locked=true;
+  assert.equal(groupClipTiming(project,[axis],'end',-1),null);
 });

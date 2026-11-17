@@ -47,6 +47,36 @@ export function fitClipOffset({min,max,obstacles},requested,snapDistance=0){
   return closest??(legal(target)?target:null);
 }
 
+export function groupClipTiming(project,items,edge,requested,snapDistance=0){
+  const duration=project.duration;
+  const entries=items.map(item=>({item,...clipBounds(item,duration)}));
+  if(!entries.length||entries.some(entry=>entry.item.locked||entry.end<=entry.start))return null;
+
+  const start=Math.min(...entries.map(entry=>entry.start));
+  const end=Math.max(...entries.map(entry=>entry.end));
+  const frame=1/30;
+  if(edge==='start'){
+    const limit=Math.max(start,Math.min(...entries.map(entry=>entry.end-frame)));
+    const cut=Math.min(limit,Math.max(start,start+requested));
+    return {start:cut,end,offset:0,entries:entries.map(entry=>({...entry,start:Math.max(cut,entry.start)}))};
+  }
+  if(edge==='end'){
+    const limit=Math.min(end,Math.max(...entries.map(entry=>entry.start+frame)));
+    const cut=Math.max(limit,Math.min(end,end+requested));
+    return {start,end:cut,offset:0,entries:entries.map(entry=>({...entry,end:Math.min(cut,entry.end)}))};
+  }
+
+  const placement=clipPlacement(project,items,false);
+  // A template that reaches the end of the scene can slide later while clipping at that boundary.
+  if(end===duration)placement.max=Math.max(0,duration-Math.max(...entries.map(entry=>entry.start+frame)));
+  const offset=fitClipOffset(placement,requested,snapDistance);
+  if(offset===null)return null;
+  return {
+    start:start+offset,end:Math.min(duration,end+offset),offset,
+    entries:entries.map(entry=>({...entry,start:entry.start+offset,end:Math.min(duration,entry.end+offset)})),
+  };
+}
+
 export function fitClipOnLane(project,item,target,requested,snapDistance){
   if(item.locked||target.locked)return null;
   const {start,end}=clipBounds(item,project.duration);
