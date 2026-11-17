@@ -1,4 +1,4 @@
-import {test} from 'node:test';import assert from 'node:assert/strict';import {splitSelectedLayers,placeOnLane,duplicateTimelineClips,clipPlacement,fitClipOffset,groupClipTiming,splitTemplateGroup} from '../timeline-lanes.js';
+import {test} from 'node:test';import assert from 'node:assert/strict';import {splitSelectedLayers,placeOnLane,duplicateTimelineClips,clipPlacement,fitClipOffset,groupClipTiming,splitTimelineGroup} from '../timeline-lanes.js';
 test('splits selected clips without losing animation and selects both pieces',()=>{let p={duration:10,layers:[{id:'a',clipStart:0,clipEnd:10,keys:[{time:7,property:'opacity',value:.5}]},{id:'b',keys:[]}],groups:[{id:'g',layerIds:['a']}]};let result=splitSelectedLayers(p,['a'],4,()=> 'right');assert.deepEqual(result,['a','right']);assert.equal(p.layers.length,3);assert.equal(p.layers[0].clipEnd,4);assert.equal(p.layers[1].clipStart,4);assert.deepEqual(p.layers[1].keys,p.layers[0].keys);assert.equal(p.layers[0].laneId,p.layers[1].laneId);assert.deepEqual(p.groups[0].layerIds,['a','right'])});
 test('two non-overlapping objects can share a timeline lane',()=>{let p={duration:10,layers:[{id:'a',clipStart:0,clipEnd:3},{id:'b',clipStart:3,clipEnd:6}]};assert.equal(placeOnLane(p,'a','b'),true);assert.equal(p.layers[0].laneId,p.layers[1].laneId)});
 test('refuses overlapping objects on a lane without modifying either',()=>{let p={duration:10,layers:[{id:'a',clipStart:0,clipEnd:4},{id:'b',clipStart:3,clipEnd:6}]};assert.throws(()=>placeOnLane(p,'a','b'),/chồng/);assert.equal(p.layers[0].laneId,undefined)});
@@ -133,7 +133,7 @@ test('splits a template into separate groups at a cut across staggered and previ
   const group={id:'g',name:'Dòng lịch sử',historyLine:true,layerIds:['early','already-cut','axis','mark'],collapsed:true,scalePercent:50};
   const project={duration:10,groups:[group],layers:[early,existingRight,axis,mark]};
   let id=0;
-  const right=splitTemplateGroup(project,group,3,()=>String(++id));
+  const right=splitTimelineGroup(project,group,3,()=>String(++id));
   assert.deepEqual(group.layerIds,['early','axis']);
   assert.deepEqual(right.layerIds,['already-cut','3','mark']);
   assert.equal(right.historyLine,true);

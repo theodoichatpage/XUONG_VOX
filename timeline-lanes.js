@@ -1,7 +1,7 @@
 import {clipBounds,moveClipIntervals,splitLayerAt} from './model.js';
 import {addSplitToGroup,removeMissingGroupMembers} from './groups.js';
 export function splitSelectedLayers(project,ids,time,makeId){let out=[];for(const id of ids){let index=project.layers.findIndex(l=>l.id===id);if(index<0||project.layers[index].locked)continue;let original=project.layers[index],split=splitLayerAt(original,time,project.duration,makeId());if(!split)continue;let [left,right]=split;left.laneId=right.laneId=original.laneId||original.id;project.layers.splice(index,1,left,right);addSplitToGroup(project,id,right.id);out.push(left.id,right.id)}return out}
-export function splitTemplateGroup(project,group,time,makeId){
+export function splitTimelineGroup(project,group,time,makeId){
   const ids=new Set(group.layerIds);
   const members=project.layers.filter(layer=>ids.has(layer.id));
   if(members.some(layer=>layer.locked))return null;
@@ -26,6 +26,13 @@ export function splitTemplateGroup(project,group,time,makeId){
   }
   group.layerIds=left;
   const newGroup={...group,id:makeId(),layerIds:right};
+  if(Number.isFinite(group.batchStart)){
+    for(const part of [group,newGroup]){
+      const clips=part.layerIds.map(id=>clipBounds(allMembers.get(id),project.duration));
+      part.batchStart=Math.min(...clips.map(clip=>clip.start));
+      part.batchDuration=Math.max(...clips.map(clip=>clip.end))-part.batchStart;
+    }
+  }
   project.groups.splice(project.groups.indexOf(group)+1,0,newGroup);
   return newGroup;
 }
