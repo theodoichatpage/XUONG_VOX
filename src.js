@@ -1,6 +1,7 @@
 import {puppetDefaults,puppetInfluences,puppetPinOffset} from './puppet.js';
 import {motionDefaults,layerMotionAt} from './layer-motion.js';
 import {effectDefaults,paintLayerEffects,paintLayerShadow} from './layer-effects.js';
+import {createMaskEditor} from './mask-editor.js';
 import {historyLineLayout} from './history-line.js';
 import {shapeCanvas,shapeNames,popScale} from './shapes.js';
 import {createImageStrip} from './image-strip.js';
@@ -179,6 +180,27 @@ function updatePuppetMarkers(){
 }
 
 let puppetPlacement=null,puppetPinSelection=null;
+let maskPaintPending=false;
+const maskEditor=createMaskEditor({
+  getLayer:()=>inspectorTab==='effects'&&!$('#effect-layer').hidden&&selected!=='camera'?current():null,
+  getMesh:layer=>meshes.get(layer.id),
+  redraw(repaint=false){
+    needsRender=true;
+    if(!repaint||maskPaintPending)return;
+    maskPaintPending=true;
+    requestAnimationFrame(()=>{
+      maskPaintPending=false;
+      applyAtTime();
+    });
+  },
+  commit(layer,effects){
+    layer.effects=effects;
+    applyAtTime();
+    scheduleSave();
+    renderLayerEffects();
+  },
+  refresh:renderLayerEffects,
+});
 function appendPuppetControls(panel,item,editable){
   const settings={...puppetDefaults,...item?.puppet};
   if(puppetPlacement?.item!==item)puppetPlacement=null;
@@ -373,6 +395,7 @@ function renderLayerEffects(){
       preview.className='effect-choice-icon '+icon;
       preview.setAttribute('aria-hidden','true');
       if(icon==='none')preview.textContent='⊘';
+      if(icon==='pen')preview.textContent='✎';
       button.append(preview,name);
       button.onclick=()=>{
         const sectionIndex=[...panel.querySelectorAll('fieldset')].indexOf(parent);
@@ -406,14 +429,47 @@ function renderLayerEffects(){
   }
 
   const mask=section('Mask');
-  choices(mask,[['none','Tắt'],['rectangle','Chữ nhật'],['ellipse','Elip']].map(([type,name])=>({
-    name,icon:type,active:values.mask===type,changes:{mask:type},
-  })));
-  parameters(mask,values.mask!=='none',[
+  const drawing=maskEditor.currentDraft();
+  choices(mask,[['none','Tắt'],['rectangle','Chữ nhật'],['ellipse','Elip'],['pen','Bút']].map(([type,name])=>({
+    name,icon:type,active:drawing?type==='pen':values.mask===type,changes:{mask:type},
+  })),changes=>{
+    if(changes.mask==='pen'){
+      maskEditor.begin(item);
+    }else{
+      if(drawing)maskEditor.cancel();
+      update(changes,true);
+    }
+  });
+  if(drawing){
+    const actions=document.createElement('div');
+    actions.className='mask-drawing-actions';
+    const finish=document.createElement('button');
+    finish.type='button';
+    finish.textContent='Khép vùng';
+    finish.disabled=drawing.points.length<3;
+    finish.onclick=maskEditor.finish;
+    const cancel=document.createElement('button');
+    cancel.type='button';
+    cancel.textContent='Hủy vẽ';
+    cancel.onclick=maskEditor.cancel;
+    actions.append(finish,cancel);
+    mask.append(actions);
+  }
+  if(values.mask!=='pen')parameters(mask,values.mask!=='none'&&!drawing,[
     ['Rộng (%)','width','number',1,100],['Cao (%)','height','number',1,100],
-    ['Dịch X (%)','x','number',-100,100],['Dịch Y (%)','y','number',-100,100],
-    ['Đảo vùng','invert','checkbox'],
   ]);
+  parameters(mask,values.mask!=='none'&&!drawing,[
+    ['Dịch X (%)','x','number',-100,100],['Dịch Y (%)','y','number',-100,100],
+    ['Độ mờ viền (%)','feather','number',0,100],['Đảo vùng','invert','checkbox'],
+  ]);
+  if(drawing||values.mask!=='none'){
+    const hint=document.createElement('p');
+    hint.className='mask-editor-hint';
+    hint.textContent=drawing
+      ?'Bấm từng điểm trên ảnh, rồi chọn Khép vùng (Enter).'
+      :'Kéo bên trong viền xanh để dời vùng mask.';
+    mask.append(hint);
+  }
 
   const shadow=section('Shadow');
   choices(shadow,[
@@ -1016,6 +1072,15 @@ function enableImageSelection(canvas,getCamera,usesGizmo){let click=null;canvas.
 function selectFromViewport(id){if(id!=='camera'){for(const group of project.groups||[])if(group.layerIds?.includes(id))group.collapsed=false}select(id);if(id!=='camera'){selectedClips.add(id);renderTracks();let bar=[...document.querySelectorAll('.timeline .clip-bar')].find(el=>el.dataset.layerId===id);bar?.closest('.track')?.scrollIntoView({block:'nearest',inline:'nearest'})}}
 enableImageSelection(renderer.domElement,()=>custom,true);
 enableImageSelection(previewRenderer.domElement,()=>project.aspect==='portrait'?portraitCamera:active,false);
+maskEditor.attach(renderer.domElement,()=>custom);
+maskEditor.attach(previewRenderer.domElement,()=>project.aspect==='portrait'?portraitCamera:active);
+document.addEventListener('keydown',event=>{
+  if(!maskEditor.currentDraft()||!['Escape','Enter'].includes(event.key)||
+    event.target instanceof HTMLButtonElement&&event.key==='Enter')return;
+  event.preventDefault();
+  if(event.key==='Escape')maskEditor.cancel();
+  else maskEditor.finish();
+});
 for(const view of [renderer,previewRenderer]){
   // Three.js restores its WebGL state. The idle editor still needs a new frame.
   view.domElement.addEventListener('webglcontextrestored',()=>{needsRender=true});
@@ -1657,4 +1722,4 @@ for(const [id,key,axis,sign] of [
 applyWorkspaceSizes();
 window.addEventListener('resize',applyWorkspaceSizes);
 document.addEventListener('keydown',e=>{if(e.code!=='Space'||e.ctrlKey||e.metaKey||e.altKey||e.repeat||busy)return;const t=e.target;if(t instanceof HTMLElement&&(t.isContentEditable||t.tagName==='TEXTAREA'||t.tagName==='SELECT'||t.tagName==='INPUT'&&t.type!=='range'))return;e.preventDefault();$('#play').click()});
-let last=performance.now(),lastFieldsRefresh=0;$('#play').onclick=async()=>{if(playing){playAllScenes=false;playing=false;audioElement.pause();$('#play').textContent='▶ Phát';return}if(time>=project.duration)time=0;playing=true;$('#play').textContent='❚❚ Dừng';last=performance.now();if(loadedAudioSrc){seekAudio();try{await audioElement.play()}catch(e){playAllScenes=false;playing=false;$('#play').textContent='▶ Phát';alert('Không phát được âm thanh: '+e.message)}}};function resize(){needsRender=true;let w=$('#customView').clientWidth,h=$('#customView').clientHeight;if(w&&h){renderer.setSize(w,h,false);custom.aspect=w/h;custom.updateProjectionMatrix()}let frame=previewRenderer.domElement.parentElement,fw=frame.clientWidth,fh=frame.clientHeight;if(fw&&fh)previewRenderer.setSize(fw,fh,false);active.aspect=16/9;active.updateProjectionMatrix();cameraHelper.update()}const viewSizeObserver=new ResizeObserver(resize);viewSizeObserver.observe($('#cameraView'));viewSizeObserver.observe($('#customView'));function tick(now){requestAnimationFrame(tick);if(playing&&!busy){time=time+(now-last)/1000;if(time>=project.duration){time=project.duration;playing=false;audioElement.pause();$('#play').textContent='▶ Phát';if(playAllScenes){let i=project.scenes.findIndex(x=>x.id===project.activeSceneId),next=project.scenes[i+1];if(next)changeScene(next.id).then(()=>{if(playAllScenes)$('#play').click()}).catch(e=>{playAllScenes=false;alert('Không phát được cảnh tiếp theo: '+e.message)});else playAllScenes=false}}applyAtTime();if(now-lastFieldsRefresh>=200){showFields();lastFieldsRefresh=now}}last=now;orbit.update();if(busy||!needsRender)return;needsRender=false;puppetMarkers.visible=updatePuppetMarkers();grid.visible=false;gizmo.getHelper().visible=false;cameraHelper.visible=false;cameraIcon.visible=false;previewRenderer.render(scene,project.aspect==='portrait'?portraitCamera:active);grid.visible=true;gizmo.getHelper().visible=true;cameraHelper.visible=true;cameraIcon.visible=true;renderer.render(scene,custom);puppetMarkers.visible=false}renderTicks();rebuild();resize();requestAnimationFrame(tick);window.__vox={get project(){return project},get time(){return time}};
+let last=performance.now(),lastFieldsRefresh=0;$('#play').onclick=async()=>{if(playing){playAllScenes=false;playing=false;audioElement.pause();$('#play').textContent='▶ Phát';return}if(time>=project.duration)time=0;playing=true;$('#play').textContent='❚❚ Dừng';last=performance.now();if(loadedAudioSrc){seekAudio();try{await audioElement.play()}catch(e){playAllScenes=false;playing=false;$('#play').textContent='▶ Phát';alert('Không phát được âm thanh: '+e.message)}}};function resize(){needsRender=true;let w=$('#customView').clientWidth,h=$('#customView').clientHeight;if(w&&h){renderer.setSize(w,h,false);custom.aspect=w/h;custom.updateProjectionMatrix()}let frame=previewRenderer.domElement.parentElement,fw=frame.clientWidth,fh=frame.clientHeight;if(fw&&fh)previewRenderer.setSize(fw,fh,false);active.aspect=16/9;active.updateProjectionMatrix();cameraHelper.update()}const viewSizeObserver=new ResizeObserver(resize);viewSizeObserver.observe($('#cameraView'));viewSizeObserver.observe($('#customView'));function tick(now){requestAnimationFrame(tick);if(playing&&!busy){time=time+(now-last)/1000;if(time>=project.duration){time=project.duration;playing=false;audioElement.pause();$('#play').textContent='▶ Phát';if(playAllScenes){let i=project.scenes.findIndex(x=>x.id===project.activeSceneId),next=project.scenes[i+1];if(next)changeScene(next.id).then(()=>{if(playAllScenes)$('#play').click()}).catch(e=>{playAllScenes=false;alert('Không phát được cảnh tiếp theo: '+e.message)});else playAllScenes=false}}applyAtTime();if(now-lastFieldsRefresh>=200){showFields();lastFieldsRefresh=now}}last=now;orbit.update();if(busy||!needsRender)return;needsRender=false;puppetMarkers.visible=updatePuppetMarkers();grid.visible=false;gizmo.getHelper().visible=false;cameraHelper.visible=false;cameraIcon.visible=false;previewRenderer.render(scene,project.aspect==='portrait'?portraitCamera:active);grid.visible=true;gizmo.getHelper().visible=true;cameraHelper.visible=true;cameraIcon.visible=true;renderer.render(scene,custom);maskEditor.render();puppetMarkers.visible=false}renderTicks();rebuild();resize();requestAnimationFrame(tick);window.__vox={get project(){return project},get time(){return time}};
